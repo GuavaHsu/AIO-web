@@ -144,7 +144,7 @@
                 <img
                     src={`./${name}.png`}
                     alt={name}
-                    className="h-20 w-20 object-contain"
+                    className="w-full h-full object-contain"
                     onError={() => setHasError(true)}
                 />
             );
@@ -369,11 +369,10 @@
                             </section>
                             <div className="grid grid-cols-2 gap-4 font-black">
                                 {drinkTypes.map(d => (
-                                    <button key={d.name} type="button" onClick={() => handleCategorySelect(d)} className={`drink-card relative h-36 rounded-[2.5rem] overflow-hidden flex flex-col items-center justify-center space-y-2 border-2 border-transparent cursor-pointer ${formData.category === d.name ? 'active' : 'bg-white/40 opacity-90 shadow-sm'}`}>
-                                        <div className="flex items-center justify-center h-16 font-black">
+                                    <button key={d.name} type="button" onClick={() => handleCategorySelect(d)} className={`drink-card relative h-36 rounded-[2.5rem] overflow-hidden flex flex-col items-center justify-center border-2 border-transparent cursor-pointer ${formData.category === d.name ? 'active' : 'bg-white/40 opacity-90 shadow-sm'}`}>
+                                        <div className="flex items-center justify-center w-full h-full p-4 font-black">
                                             <DrinkImage name={d.name} emoji={d.emoji} />
                                         </div>
-                                        <span className={`text-[14px] font-black tracking-wider ${formData.category === d.name ? 'text-amber-950' : 'text-amber-900'}`}>{d.name}</span>
                                     </button>
                                 ))}
                             </div>
