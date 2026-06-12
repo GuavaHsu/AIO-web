@@ -4,12 +4,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>HAPPYDRINK</title>
+    <title>生活管家 (記帳 & 微醺)</title>
+    <link rel="manifest" href="./記帳網頁/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="生活管家">
+    <link rel="apple-touch-icon" href="./記帳網頁/icon-192.png">
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        /* --- 動畫效果 --- */
         @keyframes float {
 
             0%,
@@ -50,21 +56,35 @@
             }
         }
 
+        /* --- 全域主題變換與樣式 --- */
         html {
             height: 100%;
         }
 
         body {
-            background: linear-gradient(to right, #fffbeb 0%, #fef3c7 50%, #fde68a 100%) fixed;
-            background-size: cover;
             margin: 0;
             padding: 0;
             overflow-x: hidden;
             overflow-y: auto;
             min-height: 100%;
             font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            transition: background 0.5s ease;
         }
 
+        /* 記帳主題背景 */
+        body.theme-expense {
+            background-color: #FCE4EC;
+            background-image: none;
+        }
+
+        /* 記酒主題背景 */
+        body.theme-wine {
+            background: linear-gradient(to right, #fffbeb 0%, #fef3c7 50%, #fde68a 100%) fixed;
+            background-size: cover;
+        }
+
+        /* 漂浮氣泡 */
         .bubble {
             position: fixed;
             bottom: -30px;
@@ -75,6 +95,7 @@
             pointer-events: none;
         }
 
+        /* 玻璃卡片 */
         .glass-card {
             background: rgba(255, 255, 255, 0.65);
             backdrop-filter: blur(12px);
@@ -82,6 +103,7 @@
             border: 1px solid rgba(255, 255, 255, 0.4);
         }
 
+        /* 記酒卡片動畫 */
         .drink-card,
         .user-card {
             transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -95,20 +117,32 @@
             box-shadow: 0 15px 20px -5px rgba(245, 158, 11, 0.4);
         }
 
-        input,
-        button,
-        textarea {
-            -webkit-appearance: none;
-            outline: none !important;
-        }
-
+        /* 滾動條樣式 */
         ::-webkit-scrollbar {
             width: 4px;
         }
 
         ::-webkit-scrollbar-thumb {
-            background: #fbbf24;
+            background: var(--scrollbar-thumb-color, #F8BBD0);
             border-radius: 10px;
+        }
+
+        /* 輸入與按鈕的優化 */
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+
+        input,
+        button,
+        textarea {
+            -webkit-appearance: none;
+            outline: none !important;
         }
 
         .calendar-btn:active {
@@ -121,22 +155,480 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // --- 圖示組件 ---
+        // --- 整合的圖示元件 ---
         const Icon = ({ name, className = "w-4 h-4" }) => {
             const icons = {
                 Calendar: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>),
                 User: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>),
-                Plus: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>),
-                Minus: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="5" y1="12" x2="19" y2="12"></line></svg>),
-                Check: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="20 6 9 17 4 12"></polyline></svg>),
+                Tag: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>),
+                DollarSign: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>),
+                PenTool: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path></svg>),
+                CreditCard: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>),
+                CheckCircle2: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>),
                 ChevronLeft: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="15 18 9 12 15 6"></polyline></svg>),
                 ChevronRight: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="9 18 15 12 9 6"></polyline></svg>),
-                Loader: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`${className} animate-spin`}><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line></svg>)
+                Loader: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`${className} animate-spin`}><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line></svg>),
+                History: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>),
+                Plus: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>),
+                Minus: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="5" y1="12" x2="19" y2="12"></line></svg>),
+                Check: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="20 6 9 17 4 12"></polyline></svg>)
             };
             return icons[name] || null;
         };
 
-        const DrinkImage = ({ name, emoji }) => {
+        // ==========================================
+        //         記帳系統元件 (ExpenseApp)
+        // ==========================================
+
+        const ExpenseCalendar = ({ selectedDate, onSelect, onClose }) => {
+            const dateObj = new Date(selectedDate);
+            const [viewDate, setViewDate] = React.useState(new Date(dateObj.getFullYear(), dateObj.getMonth(), 1));
+            const year = viewDate.getFullYear();
+            const month = viewDate.getMonth();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const firstDayOfMonth = new Date(year, month, 1).getDay();
+            const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
+            const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
+            const days = [];
+            for (let i = 0; i < firstDayOfMonth; i++) days.push(null);
+            for (let i = 1; i <= daysInMonth; i++) days.push(i);
+            const isSelected = (d) => d === dateObj.getDate() && month === dateObj.getMonth() && year === dateObj.getFullYear();
+            const isToday = (d) => { const today = new Date(); return d === today.getDate() && month === today.getMonth() && year === today.getFullYear(); };
+
+            return (
+                <React.Fragment>
+                    <div className="fixed inset-0 z-[90]" onClick={onClose}></div>
+                    <div className="absolute top-0 left-0 w-full z-[100] bg-white rounded-2xl overflow-hidden shadow-2xl animate-[slideDown_0.3s_ease-out] border-2 border-pink-200" onClick={e => e.stopPropagation()}>
+                        <div className="bg-pink-500 p-4 text-white flex justify-between items-center px-6">
+                            <button type="button" onClick={prevMonth} className="p-2 hover:bg-white/10 rounded-full cursor-pointer"><Icon name="ChevronLeft" className="w-5 h-5" /></button>
+                            <h3 className="text-lg font-bold">{year}年 {month + 1}月</h3>
+                            <button type="button" onClick={nextMonth} className="p-2 hover:bg-white/10 rounded-full cursor-pointer"><Icon name="ChevronRight" className="w-5 h-5" /></button>
+                        </div>
+                        <div className="p-4">
+                            <div className="grid grid-cols-7 gap-1 mb-2 text-center text-pink-300 text-xs font-bold uppercase">{['日', '一', '二', '三', '四', '五', '六'].map(d => <div key={d}>{d}</div>)}</div>
+                            <div className="grid grid-cols-7 gap-1 text-center font-bold">
+                                {days.map((d, i) => (
+                                    <div key={i} className="aspect-square flex items-center justify-center">
+                                        {d && <button type="button" onClick={() => { onSelect(`${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`); onClose(); }} className={`w-9 h-9 rounded-xl font-bold transition-all flex items-center justify-center cursor-pointer ${isSelected(d) ? 'bg-pink-500 text-white shadow-md' : isToday(d) ? 'bg-pink-50 text-pink-700 border border-pink-100' : 'text-gray-700 hover:bg-pink-50'}`}>{d}</button>}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="text-center pb-4"><button type="button" onClick={onClose} className="text-pink-300 text-xs font-bold uppercase tracking-widest hover:text-pink-500 cursor-pointer">關閉月曆</button></div>
+                    </div>
+                </React.Fragment>
+            );
+        };
+
+        const CustomMonthPicker = ({ selectedDate, onSelect, onClose }) => {
+            const dateObj = new Date(selectedDate);
+            const [viewYear, setViewYear] = React.useState(dateObj.getFullYear());
+            const currentMonth = dateObj.getMonth();
+            const prevYear = () => setViewYear(prev => prev - 1);
+            const nextYear = () => setViewYear(prev => prev + 1);
+            const isSelected = (m) => m === currentMonth && viewYear === dateObj.getFullYear();
+            const isThisMonth = (m) => {
+                const today = new Date();
+                return m === today.getMonth() && viewYear === today.getFullYear();
+            };
+            const months = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+
+            return (
+                <React.Fragment>
+                    <div className="fixed inset-0 z-[90]" onClick={onClose}></div>
+                    <div className="absolute top-0 left-0 w-full z-[100] bg-white rounded-2xl overflow-hidden shadow-2xl animate-[slideDown_0.3s_ease-out] border-2 border-pink-200" onClick={e => e.stopPropagation()}>
+                        <div className="bg-pink-500 p-4 text-white flex justify-between items-center px-6">
+                            <button type="button" onClick={prevYear} className="p-2 hover:bg-white/10 rounded-full cursor-pointer"><Icon name="ChevronLeft" className="w-5 h-5" /></button>
+                            <h3 className="text-lg font-bold">{viewYear}年</h3>
+                            <button type="button" onClick={nextMonth} className="p-2 hover:bg-white/10 rounded-full cursor-pointer"><Icon name="ChevronRight" className="w-5 h-5" /></button>
+                        </div>
+                        <div className="p-6">
+                            <div className="grid grid-cols-3 gap-3 text-center font-bold">
+                                {months.map((mName, idx) => (
+                                    <button
+                                        key={idx}
+                                        type="button"
+                                        onClick={() => {
+                                            onSelect(`${viewYear}-${String(idx + 1).padStart(2, '0')}-01`);
+                                            onClose();
+                                        }}
+                                        className={`py-4 rounded-xl font-bold transition-all flex items-center justify-center cursor-pointer ${isSelected(idx)
+                                            ? 'bg-pink-500 text-white shadow-md'
+                                            : isThisMonth(idx)
+                                                ? 'bg-pink-50 text-pink-700 border border-pink-100'
+                                                : 'text-gray-700 hover:bg-pink-50'
+                                            }`}
+                                    >
+                                        {mName}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="text-center pb-4"><button type="button" onClick={onClose} className="text-pink-300 text-xs font-bold uppercase tracking-widest hover:text-pink-500 cursor-pointer">關閉選單</button></div>
+                    </div>
+                </React.Fragment>
+            );
+        };
+
+        const ReportPage = ({ setView, apiUrl }) => {
+            const getTodayString = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; };
+            const [selectedDate, setSelectedDate] = React.useState(getTodayString());
+            const [showCalendar, setShowCalendar] = React.useState(false);
+            const [data, setData] = React.useState(null);
+            const [loading, setLoading] = React.useState(false);
+            const [filterCategory, setFilterCategory] = React.useState('全部');
+
+            const handleQuery = () => {
+                setLoading(true);
+                const dateParts = selectedDate.split('-');
+                const queryYearMonth = `${dateParts[0]}/${dateParts[1]}`;
+
+                const callbackName = 'onGetReportResult_' + Date.now();
+                window[callbackName] = (res) => {
+                    setData(res);
+                    setLoading(false);
+                    delete window[callbackName];
+                    const s = document.getElementById(callbackName);
+                    if (s) s.remove();
+                };
+
+                const script = document.createElement('script');
+                script.id = callbackName;
+                script.src = `${apiUrl}?action=getReport&yearMonth=${encodeURIComponent(queryYearMonth)}&callback=${callbackName}&_t=${Date.now()}`;
+                script.onerror = () => {
+                    setLoading(false);
+                    if (window[callbackName]) delete window[callbackName];
+                    const s = document.getElementById(callbackName);
+                    if (s) s.remove();
+                };
+                document.body.appendChild(script);
+            };
+
+            const commonRows = data ? data.filter(row => row[6] === "現金" || row[6] === "信用卡") : [];
+            const summary = commonRows.reduce((acc, row) => {
+                const cat = row[3];
+                const amt = row[5];
+                acc[cat] = (acc[cat] || 0) + Number(amt);
+                return acc;
+            }, {});
+
+            const tingTotal = commonRows.filter(row => row[7] === "庭").reduce((sum, row) => sum + Number(row[5]), 0);
+            const shanTotal = commonRows.filter(row => row[7] === "珊").reduce((sum, row) => sum + Number(row[5]), 0);
+            const grandTotal = tingTotal + shanTotal;
+            const uniqueCategories = data ? Array.from(new Set(data.map(row => row[3]))) : [];
+
+            const filteredRows = data
+                ? data.filter(row => filterCategory === '全部' || row[3] === filterCategory)
+                    .sort((a, b) => Number(b[2]) - Number(a[2]))
+                : [];
+            const filteredTotal = filteredRows.reduce((sum, row) => sum + Number(row[5]), 0);
+
+            return (
+                <div className="min-h-screen py-6 px-4">
+                    <div className="max-w-md mx-auto space-y-4">
+                        <button onClick={() => setView('input')} className="text-pink-500 font-bold flex items-center mb-2"><Icon name="ChevronLeft" /> 回記帳頁</button>
+                        <div className={`bg-white rounded-2xl p-6 shadow-sm relative ${showCalendar ? 'z-[50]' : 'z-20'}`}>
+                            <label className="block font-bold mb-3 flex items-center text-gray-700 text-sm">
+                                <Icon name="Calendar" className="w-4 h-4 mr-2 text-pink-500" /> 查詢年月
+                            </label>
+                            <button type="button" onClick={() => setShowCalendar(true)} className="w-full p-4 bg-pink-50 rounded-2xl border border-pink-50 text-pink-700 font-bold outline-none text-lg text-center active:scale-95 transition-all cursor-pointer">
+                                {selectedDate.split('-')[0] + ' / ' + selectedDate.split('-')[1]}
+                            </button>
+                            {showCalendar && <CustomMonthPicker selectedDate={selectedDate} onSelect={setSelectedDate} onClose={() => setShowCalendar(false)} />}
+                            <button onClick={handleQuery} className="w-full mt-4 py-4 bg-pink-500 text-white rounded-xl font-bold active:scale-95 transition-all">{loading ? "查詢中..." : "開始查詢"}</button>
+                        </div>
+                        {data && (
+                            <div className="space-y-4">
+                                <div className="bg-white rounded-2xl p-6 shadow-sm">
+                                    <h3 className="font-bold text-gray-700 mb-4 text-center">統計結果</h3>
+                                    {Object.entries(summary)
+                                        .sort((a, b) => b[1] - a[1])
+                                        .map(([cat, total]) => (
+                                            <div key={cat} className="flex justify-between py-2 border-b border-gray-50">
+                                                <span className="font-bold text-gray-600">{cat}</span>
+                                                <span className="font-mono font-bold text-pink-600">{total}</span>
+                                            </div>
+                                        ))}
+                                    <div className="mt-4 pt-4 border-t-2 border-pink-100 space-y-2 text-sm font-bold text-gray-700">
+                                        <div className="flex justify-between">
+                                            <span>庭的支出</span>
+                                            <span className="font-mono text-gray-800">{tingTotal}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>珊的支出</span>
+                                            <span className="font-mono text-gray-800">{shanTotal}</span>
+                                        </div>
+                                        <div className="flex justify-between border-t border-gray-100 pt-2 text-lg text-gray-800 font-black">
+                                            <span>總計</span>
+                                            <span className="text-pink-700 font-mono">{grandTotal}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white rounded-2xl p-6 shadow-sm">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="font-bold text-gray-700">消費明細</h3>
+                                        <div>
+                                            <select
+                                                value={filterCategory}
+                                                onChange={(e) => setFilterCategory(e.target.value)}
+                                                className="bg-pink-50 text-pink-700 border border-pink-100 rounded-xl px-3 py-1.5 text-xs font-bold focus:outline-none focus:border-pink-300 cursor-pointer"
+                                            >
+                                                <option value="全部">全部項目</option>
+                                                {uniqueCategories.map(cat => (
+                                                    <option key={cat} value={cat}>{cat}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="text-[10px] text-gray-400 font-bold mb-3 flex justify-between px-1">
+                                        <span>顯示篩選後資料：{filteredRows.length} 筆</span>
+                                        <span className="text-pink-500 font-extrabold">合計金額：{filteredTotal} 元</span>
+                                    </div>
+
+                                    <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                                        <table className="w-full text-left border-collapse text-xs">
+                                            <thead>
+                                                <tr className="bg-pink-500 text-white font-bold text-center">
+                                                    <th className="p-3 whitespace-nowrap">日</th>
+                                                    <th className="p-3 whitespace-nowrap">項目</th>
+                                                    <th className="p-3 whitespace-nowrap">內容</th>
+                                                    <th className="p-3 pr-4 whitespace-nowrap text-right">金額</th>
+                                                    <th className="p-3 whitespace-nowrap">方式</th>
+                                                    <th className="p-3 whitespace-nowrap">誰</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100 font-medium">
+                                                {filteredRows.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan="6" className="p-8 text-center text-gray-400 font-bold">無此項目的消費記錄</td>
+                                                    </tr>
+                                                ) : (
+                                                    filteredRows.map((row, i) => (
+                                                        <tr key={i} className="hover:bg-pink-50/30 text-gray-700 text-center">
+                                                            <td className="p-3 whitespace-nowrap font-mono">{row[2]}</td>
+                                                            <td className="p-3 whitespace-nowrap">{row[3]}</td>
+                                                            <td className="p-3 max-w-[120px] truncate">{row[4]}</td>
+                                                            <td className="p-3 pr-4 whitespace-nowrap text-right font-mono font-bold text-pink-600">{row[5]}</td>
+                                                            <td className="p-3 whitespace-nowrap text-gray-500 text-[10px]">{row[6]}</td>
+                                                            <td className="p-3 whitespace-nowrap">{row[7]}</td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const ExpenseApp = ({ apiToken }) => {
+            const [status, setStatus] = React.useState('idle');
+            const [showCalendar, setShowCalendar] = React.useState(false);
+            const [view, setView] = React.useState('input');
+
+            const apiUrl = 'https://script.google.com/macros/s/AKfycbxyB9Z2sJHxJ3533aqEYnCxMecQShD5nUBBsfYsJpgeM2aPOXTMKU44gwM8IS7M9eYU/exec';
+
+            const getTodayString = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; };
+            const [fullDate, setFullDate] = React.useState(getTodayString());
+            const [formData, setFormData] = React.useState({ user: '', category: '', amount: '', content: '', payment: '' });
+            const successRef = React.useRef(null);
+
+            const categories = ["食物", "日用", "交通", "車車", "衣物", "寵物", "電器", "運動", "教育", "娛樂", "醫療", "禮物", "其他"];
+            const payments = ["現金", "現金-自", "信用卡", "信用卡-自"];
+
+            const changeView = React.useCallback((newView) => {
+                if (newView === 'report') {
+                    if (typeof google !== 'undefined' && google.script && google.script.history) {
+                        google.script.history.push({ view: 'report' }, { id: apiToken }, 'report');
+                        setView('report');
+                    } else {
+                        window.history.pushState({ view: 'report' }, '');
+                        setView('report');
+                    }
+                } else if (newView === 'input') {
+                    const isAtReport = view === 'report';
+                    if (isAtReport) {
+                        window.history.back();
+                    } else {
+                        setView('input');
+                    }
+                } else {
+                    setView(newView);
+                }
+            }, [view, apiToken]);
+
+            React.useEffect(() => {
+                if (typeof google !== 'undefined' && google.script && google.script.history) {
+                    google.script.history.setChangeHandler((event) => {
+                        if (event.state && event.state.view) {
+                            setView(event.state.view);
+                        } else if (event.location && event.location.hash === 'report') {
+                            setView('report');
+                        } else {
+                            setView('input');
+                        }
+                    });
+                } else {
+                    window.history.replaceState({ view: 'input' }, '');
+
+                    const handlePopState = (event) => {
+                        if (event.state && event.state.view) {
+                            setView(event.state.view);
+                        } else {
+                            setView('input');
+                        }
+                    };
+                    window.addEventListener('popstate', handlePopState);
+                    return () => {
+                        window.removeEventListener('popstate', handlePopState);
+                    };
+                }
+            }, []);
+
+            React.useEffect(() => { if (status === 'success' && successRef.current) successRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, [status]);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                if (!formData.user || !formData.category || !formData.amount) return;
+                setStatus('loading');
+                const dateParts = fullDate.split('-');
+                const payload = {
+                    timestamp: new Intl.DateTimeFormat('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: true }).format(new Date()),
+                    yearMonth: `${dateParts[0]}/${dateParts[1]}`,
+                    day: dateParts[2],
+                    category: formData.category,
+                    content: formData.content,
+                    amount: formData.amount,
+                    payment: formData.payment,
+                    user: formData.user,
+                    api_token: apiToken
+                };
+                try {
+                    await fetch(apiUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload), keepalive: true });
+                    setStatus('success');
+                    setFormData({ user: '', category: '', amount: '', content: '', payment: '' });
+                    setFullDate(getTodayString());
+                } catch (error) { setStatus('error'); }
+            };
+
+            const updateField = (name, value) => setFormData(prev => ({ ...prev, [name]: value }));
+
+            if (status === 'success') {
+                return (
+                    <div className="flex items-start justify-center min-h-[600px] h-[80vh] max-w-md mx-auto p-4 transition-all">
+                        <div ref={successRef} className="bg-white rounded-3xl p-10 text-center shadow-xl w-full animate-in zoom-in duration-300">
+                            <div className="bg-green-100 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <Icon name="CheckCircle2" className="w-12 h-12 text-green-600" />
+                            </div>
+                            <h2 className="text-2xl font-bold text-gray-800">記錄成功！</h2>
+                            <button onClick={() => setStatus('idle')} className="mt-8 w-full py-4 bg-pink-500 text-white rounded-2xl font-bold shadow-lg shadow-pink-100 transition-all active:scale-95 cursor-pointer">繼續記下一筆 ✨</button>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (view === 'report') {
+                return <ReportPage setView={changeView} apiUrl={apiUrl} />;
+            }
+
+            return (
+                <div className="min-h-screen py-6 px-4 text-gray-800 pb-32">
+                    <div className="max-w-md mx-auto space-y-4">
+                        <div className="bg-white rounded-2xl shadow-sm border-t-8 border-pink-500 p-6 relative overflow-hidden text-center">
+                            <h1 className="text-2xl font-bold text-gray-800 tracking-tight">養成記帳好習慣!!</h1>
+                            <p className="text-gray-500 mt-1 text-sm font-medium">今天花了多少呢？</p>
+                            <button onClick={() => changeView('report')} className="absolute bottom-4 right-4 p-3 bg-pink-100 rounded-full text-pink-600 hover:bg-pink-200 transition-all shadow-sm">
+                                <Icon name="History" className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <section className={`bg-white rounded-2xl px-8 py-7 shadow-sm border-2 border-transparent relative transition-all ${showCalendar ? 'z-[50]' : 'z-20'}`}>
+                                <label className="block font-bold mb-3 flex items-center text-gray-700 text-sm">
+                                    <Icon name="Calendar" className="w-4 h-4 mr-2 text-pink-500" /> 交易日期 <span className="text-pink-500 ml-1 font-black">*</span>
+                                </label>
+                                <button type="button" onClick={() => setShowCalendar(true)} className="w-full p-4 bg-pink-50 rounded-2xl border border-pink-50 text-pink-700 font-bold outline-none text-lg text-center active:scale-95 transition-all cursor-pointer">
+                                    {fullDate.replace(/-/g, ' / ')}
+                                </button>
+                                {showCalendar && <ExpenseCalendar selectedDate={fullDate} onSelect={setFullDate} onClose={() => setShowCalendar(false)} />}
+                            </section>
+
+                            <section className="bg-white rounded-2xl px-8 py-7 shadow-sm">
+                                <label className="block font-bold mb-4 flex items-center text-gray-700 text-sm">
+                                    <Icon name="User" className="w-4 h-4 mr-2 text-pink-500" /> 是誰花的？ <span className="text-pink-500 ml-1 font-black">*</span>
+                                </label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {["庭", "珊"].map(u => (
+                                        <button key={u} type="button" onClick={() => updateField('user', u)} className={`p-4 rounded-xl border transition-all font-bold text-lg active:scale-90 cursor-pointer ${formData.user === u ? 'bg-pink-100 border-pink-400 text-pink-700 shadow-sm scale-95' : 'bg-gray-50 border-gray-50 text-gray-500'}`}>{u}</button>
+                                    ))}
+                                </div>
+                            </section>
+
+                            <section className="bg-white rounded-2xl px-8 py-7 shadow-sm">
+                                <label className="block font-bold mb-4 flex items-center text-gray-700 text-sm">
+                                    <Icon name="Tag" className="w-4 h-4 mr-2 text-pink-500" /> 項目 <span className="text-pink-500 ml-1 font-black">*</span>
+                                </label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {categories.map(c => (
+                                        <label key={c} className={`flex flex-col items-center justify-center p-4 rounded-xl border transition-all cursor-pointer text-center space-y-1 active:scale-90 ${formData.category === c ? 'bg-pink-100 border-pink-400 shadow-sm scale-95' : 'bg-gray-50 border-gray-50'}`}>
+                                            <input required type="radio" name="category" checked={formData.category === c} onChange={() => updateField('category', c)} className="hidden" />
+                                            <span className={`text-lg font-bold ${formData.category === c ? 'text-pink-700' : 'text-gray-500'}`}>{c}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </section>
+
+                            <section className="bg-white rounded-2xl px-8 py-7 shadow-sm">
+                                <label className="block font-bold mb-2 flex items-center text-gray-700 text-sm">
+                                    <Icon name="DollarSign" className="w-4 h-4 mr-2 text-pink-500" /> 金額 <span className="text-pink-500 ml-1 font-black">*</span>
+                                </label>
+                                <input required type="number" inputMode="decimal" placeholder="0" value={formData.amount} onChange={(e) => updateField('amount', e.target.value)} onWheel={(e) => e.target.blur()} className="w-full border-b-2 border-gray-100 py-3 px-4 focus:border-pink-500 outline-none transition-all text-3xl font-mono font-bold text-pink-600 bg-transparent placeholder:text-pink-100" />
+                            </section>
+
+                            <section className="bg-white rounded-2xl px-8 py-7 shadow-sm">
+                                <label className="block font-bold mb-2 flex items-center text-gray-700 text-sm">
+                                    <Icon name="PenTool" className="w-4 h-4 mr-2 text-pink-500" /> 內容 <span className="text-pink-500 ml-1 font-black">*</span>
+                                </label>
+                                <input required type="text" placeholder="備註..." value={formData.content} onChange={(e) => updateField('content', e.target.value)} className="w-full border-b-2 border-gray-100 py-3 px-4 focus:border-pink-500 outline-none text-lg text-pink-700 font-bold placeholder:text-pink-100" />
+                            </section>
+
+                            <section className="bg-white rounded-2xl px-8 py-7 shadow-sm">
+                                <label className="block font-bold mb-4 flex items-center text-gray-700 text-sm">
+                                    <Icon name="CreditCard" className="w-4 h-4 mr-2 text-pink-500" /> 付款方式 <span className="text-pink-500 ml-1 font-black">*</span>
+                                </label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {payments.map(p => (
+                                        <label key={p} className={`flex flex-col items-center justify-center p-4 rounded-xl border transition-all cursor-pointer text-center active:scale-90 ${formData.payment === p ? 'bg-pink-100 border-pink-400 shadow-sm scale-95' : 'bg-gray-50 border-gray-50 text-gray-400'}`}>
+                                            <input required type="radio" name="payment" checked={formData.payment === p} onChange={() => updateField('payment', p)} className="hidden" />
+                                            <span className={`text-lg font-bold ${formData.payment === p ? 'text-pink-700' : 'text-gray-500'}`}>{p}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </section>
+
+                            <div className="pt-4">
+                                <button type="submit" disabled={status === 'loading'} className={`w-full py-5 rounded-3xl font-bold text-white shadow-xl flex items-center justify-center space-x-3 transition-all active:scale-95 cursor-pointer ${status === 'loading' ? 'bg-pink-200' : 'bg-[#E91E63] shadow-pink-200 hover:bg-[#D81B60]'}`}>
+                                    {status === 'loading' ? <Icon name="Loader" className="w-6 h-6 animate-spin" /> : <Icon name="CheckCircle2" className="w-6 h-6" />}
+                                    <span className="text-xl tracking-widest uppercase font-bold">{status === 'loading' ? '傳送中...' : '送出記錄'}</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        //         微醺系統元件 (WineApp)
+        // ==========================================
+
+        const WineImage = ({ name, emoji }) => {
             const [hasError, setHasError] = React.useState(false);
             return hasError ? (
                 <span className="text-6xl font-black">{emoji}</span>
@@ -155,7 +647,7 @@
             return (<div className="fixed inset-0 overflow-hidden z-0 pointer-events-none font-black">{bubbles.map(b => (<div key={b.id} className="bubble" style={{ left: b.left, width: b.size, height: b.size, animationDuration: b.duration, animationDelay: b.delay }} />))}</div>);
         };
 
-        const CustomCalendar = ({ selectedDate, onSelect, onClose }) => {
+        const WineCalendar = ({ selectedDate, onSelect, onClose }) => {
             const dateObj = new Date(selectedDate);
             const [viewDate, setViewDate] = React.useState(new Date(dateObj.getFullYear(), dateObj.getMonth(), 1));
             const year = viewDate.getFullYear();
@@ -195,70 +687,262 @@
             );
         };
 
-        const App = () => {
-            const [authStatus, setAuthStatus] = React.useState('loading');
-            const [apiToken, setApiToken] = React.useState("");
+        // --- 微醺時光月份選擇器 (琥珀色) ---
+        const CustomWineMonthPicker = ({ selectedDate, onSelect, onClose }) => {
+            const dateObj = new Date(selectedDate);
+            const [viewYear, setViewYear] = React.useState(dateObj.getFullYear());
+            const currentMonth = dateObj.getMonth();
+            const prevYear = () => setViewYear(prev => prev - 1);
+            const nextYear = () => setViewYear(prev => prev + 1);
+            const isSelected = (m) => m === currentMonth && viewYear === dateObj.getFullYear();
+            const isThisMonth = (m) => {
+                const today = new Date();
+                return m === today.getMonth() && viewYear === today.getFullYear();
+            };
+            const months = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 
-            const apiUrl = 'https://script.google.com/macros/s/AKfycbylZOr-mY4m822xXNBZgp7uAaeJ_6eT-ZxwZYc9YGNdweiyz5x7l0U8ekSaY9_9MVrP/exec';
+            return (
+                <React.Fragment>
+                    <div className="fixed inset-0 z-[90] cursor-default" onClick={onClose}></div>
+                    <div className="absolute top-0 left-0 w-full z-[100] bg-white rounded-[2.5rem] overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.3)] animate-[slideDown_0.3s_ease-out] border-4 border-amber-900 font-black" onClick={e => e.stopPropagation()}>
+                        <div className="bg-amber-900 p-3.5 text-white flex justify-between items-center px-6">
+                            <button type="button" onClick={prevYear} className="p-2 hover:bg-white/10 rounded-full cursor-pointer"><Icon name="ChevronLeft" className="w-5 h-5" /></button>
+                            <h3 className="text-xl tracking-widest">{viewYear}年</h3>
+                            <button type="button" onClick={nextYear} className="p-2 hover:bg-white/10 rounded-full cursor-pointer"><Icon name="ChevronRight" className="w-5 h-5" /></button>
+                        </div>
+                        <div className="p-6">
+                            <div className="grid grid-cols-3 gap-3 text-center font-black">
+                                {months.map((mName, idx) => (
+                                    <button
+                                        key={idx}
+                                        type="button"
+                                        onClick={() => {
+                                            onSelect(`${viewYear}-${String(idx + 1).padStart(2, '0')}-01`);
+                                            onClose();
+                                        }}
+                                        className={`py-4 rounded-xl font-black text-lg transition-all flex items-center justify-center cursor-pointer ${isSelected(idx)
+                                            ? 'bg-amber-900 text-white shadow-md scale-105'
+                                            : isThisMonth(idx)
+                                                ? 'bg-amber-100 text-amber-900 border border-amber-900/20'
+                                                : 'text-amber-900 hover:bg-amber-50'
+                                            }`}
+                                    >
+                                        {mName}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="text-center pb-4"><button type="button" onClick={onClose} className="text-amber-900/50 text-xs font-black uppercase tracking-widest hover:text-amber-900 cursor-pointer">關閉選單</button></div>
+                    </div>
+                </React.Fragment>
+            );
+        };
 
-            React.useEffect(() => {
-                const id = new URLSearchParams(window.location.search).get('id');
-                if (!id) {
-                    setAuthStatus('denied');
-                    return;
-                }
+        // --- 微醺時光歷史統計頁面 (琥珀色) ---
+        const WineReportPage = ({ setView, apiUrl, apiToken }) => {
+            const getTodayString = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; };
+            const [selectedDate, setSelectedDate] = React.useState(getTodayString());
+            const [showCalendar, setShowCalendar] = React.useState(false);
+            const [data, setData] = React.useState(null);
+            const [loading, setLoading] = React.useState(false);
+            const [filterCategory, setFilterCategory] = React.useState('全部');
 
-                setAuthStatus('loading');
-                let isFinalized = false;
+            const handleQuery = () => {
+                setLoading(true);
+                const dateParts = selectedDate.split('-');
+                const queryYearMonth = `${dateParts[0]}/${dateParts[1]}`;
 
-                window.onVerifyResult = (res) => {
-                    if (isFinalized) return;
-                    isFinalized = true;
-
-                    if (res && res.auth === 'OK') {
-                        setApiToken(id.trim());
-                        setTimeout(() => setAuthStatus('authorized'), 100);
-                    } else {
-                        setAuthStatus('denied');
-                    }
-                    cleanup();
-                };
-
-                const cleanup = () => {
-                    const s = document.getElementById('v-script');
+                const callbackName = 'onGetWineReportResult_' + Date.now();
+                window[callbackName] = (res) => {
+                    setData(res);
+                    setLoading(false);
+                    delete window[callbackName];
+                    const s = document.getElementById(callbackName);
                     if (s) s.remove();
                 };
 
-                const timeoutId = setTimeout(() => {
-                    if (!isFinalized) {
-                        isFinalized = true;
-                        setAuthStatus('denied');
-                        cleanup();
-                    }
-                }, 5000);
-
                 const script = document.createElement('script');
-                script.id = 'v-script';
-                script.src = `${apiUrl}?action=verify&id=${encodeURIComponent(id.trim())}&callback=onVerifyResult&_t=${Date.now()}`;
+                script.id = callbackName;
+                script.src = `${apiUrl}?action=getReport&yearMonth=${encodeURIComponent(queryYearMonth)}&id=${encodeURIComponent(apiToken)}&api_token=${encodeURIComponent(apiToken)}&callback=${callbackName}&_t=${Date.now()}`;
                 script.onerror = () => {
-                    if (isFinalized) return;
-                    isFinalized = true;
-                    setAuthStatus('denied');
-                    cleanup();
+                    setLoading(false);
+                    if (window[callbackName]) delete window[callbackName];
+                    const s = document.getElementById(callbackName);
+                    if (s) s.remove();
                 };
                 document.body.appendChild(script);
+            };
 
-                return () => {
-                    clearTimeout(timeoutId);
-                    delete window.onVerifyResult;
-                };
-            }, []);
+            const filteredDataRows = data ? data.filter(row => row && row[3]) : [];
+
+            // 優先從備註判定成員，若備註沒提到任何人，則依據原本是誰喝酒欄位
+            const isUserRow = (row, userName, otherName) => {
+                const userCol = row[4] || "";
+                const noteCol = row[8] || "";
+                if (noteCol.includes(userName)) return true;
+                if (noteCol.includes(otherName)) return false;
+                return userCol === userName;
+            };
+
+            // 分別過濾出庭與珊的資料列
+            const tingRows = filteredDataRows.filter(row => isUserRow(row, "庭", "珊"));
+            const shanRows = filteredDataRows.filter(row => isUserRow(row, "珊", "庭"));
+
+            // 分別按酒類累加杯數
+            const tingCups = tingRows.reduce((acc, row) => {
+                const cat = row[3];
+                const cup = Number(row[4]) || 0;
+                acc[cat] = (acc[cat] || 0) + cup;
+                return acc;
+            }, {});
+
+            const shanCups = shanRows.reduce((acc, row) => {
+                const cat = row[3];
+                const cup = Number(row[4]) || 0;
+                acc[cat] = (acc[cat] || 0) + cup;
+                return acc;
+            }, {});
+
+            const uniqueCategories = data ? Array.from(new Set(filteredDataRows.map(row => row[3]))) : [];
+
+            const filteredRows = data
+                ? filteredDataRows.filter(row => filterCategory === '全部' || row[3] === filterCategory)
+                    .sort((a, b) => Number(b[2]) - Number(a[2]))
+                : [];
+            const filteredTotal = filteredRows.reduce((sum, row) => sum + (Number(row[7]) || 0), 0);
+
+            return (
+                <div className="min-h-screen py-6 px-4 font-black">
+                    <div className="max-w-md mx-auto space-y-4">
+                        <button onClick={() => setView('input')} className="text-amber-900 font-black flex items-center mb-2 active:scale-95 transition-all"><Icon name="ChevronLeft" /> 回微醺首頁</button>
+                        <div className={`glass-card rounded-[2.5rem] p-6 shadow-sm relative ${showCalendar ? 'z-[50]' : 'z-20'}`}>
+                            <label className="block font-black mb-3 flex items-center text-amber-900 text-sm">
+                                <Icon name="Calendar" className="w-4 h-4 mr-2 text-amber-900" /> 查詢年月
+                            </label>
+                            <button type="button" onClick={() => setShowCalendar(true)} className="w-full p-4 bg-amber-50/50 rounded-2xl border-2 border-amber-100 text-amber-900 font-black outline-none text-lg text-center active:scale-95 transition-all cursor-pointer">
+                                {selectedDate.split('-')[0] + ' / ' + selectedDate.split('-')[1]}
+                            </button>
+                            {showCalendar && <CustomWineMonthPicker selectedDate={selectedDate} onSelect={setSelectedDate} onClose={() => setShowCalendar(false)} />}
+                            <button onClick={handleQuery} className="w-full mt-4 py-4 bg-amber-900 text-white rounded-xl font-black active:scale-95 transition-all">{loading ? "查詢中..." : "開始查詢"}</button>
+                        </div>
+                        {data && (
+                            <div className="space-y-4">
+                                <div className="glass-card rounded-[2.5rem] p-6 shadow-sm space-y-6">
+                                    <h3 className="font-black text-amber-900 mb-2 text-center text-xl tracking-wider">當月開心紀錄</h3>
+
+                                    {/* 庭的紀錄 */}
+                                    <div className="p-4 rounded-3xl bg-amber-50/40 border border-amber-900/5 space-y-2">
+                                        <h4 className="font-black text-amber-950 text-base border-b border-amber-900/10 pb-1 flex items-center">
+                                            <span className="mr-1">庭的紀錄</span>
+                                        </h4>
+                                        <div className="space-y-1.5 pl-1 text-sm font-bold text-amber-900">
+                                            {Object.keys(tingCups).length === 0 ? (
+                                                <div className="text-amber-900/40 text-xs italic">這個月還沒有開心的紀錄唷</div>
+                                            ) : (
+                                                Object.entries(tingCups).map(([cat, cup]) => (
+                                                    <div key={cat} className="flex justify-between">
+                                                        <span>{cat}</span>
+                                                        <span className="font-mono">{cup} 杯</span>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* 珊的紀錄 */}
+                                    <div className="p-4 rounded-3xl bg-amber-50/40 border border-amber-900/5 space-y-2">
+                                        <h4 className="font-black text-amber-950 text-base border-b border-amber-900/10 pb-1 flex items-center">
+                                            <span className="mr-1">珊的紀錄</span>
+                                        </h4>
+                                        <div className="space-y-1.5 pl-1 text-sm font-bold text-amber-900">
+                                            {Object.keys(shanCups).length === 0 ? (
+                                                <div className="text-amber-900/40 text-xs italic">這個月還沒有開心的紀錄唷</div>
+                                            ) : (
+                                                Object.entries(shanCups).map(([cat, cup]) => (
+                                                    <div key={cat} className="flex justify-between">
+                                                        <span>{cat}</span>
+                                                        <span className="font-mono">{cup} 杯</span>
+                                                    </div>
+                                                ))
+                                            )}
+
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="glass-card rounded-[2.5rem] p-6 shadow-sm">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="font-black text-amber-900">飲酒明細</h3>
+                                        <div>
+                                            <select
+                                                value={filterCategory}
+                                                onChange={(e) => setFilterCategory(e.target.value)}
+                                                className="bg-amber-50/50 text-amber-900 border-2 border-amber-100 rounded-xl px-3 py-1.5 text-xs font-black focus:outline-none focus:border-amber-300 cursor-pointer"
+                                            >
+                                                <option value="全部">全部項目</option>
+                                                {uniqueCategories.map(cat => (
+                                                    <option key={cat} value={cat}>{cat}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="text-[10px] text-amber-900/50 font-black mb-3 flex justify-between px-1">
+                                        <span>顯示篩選後資料：{filteredRows.length} 筆</span>
+                                        <span className="text-amber-950 font-black">合計容量：{filteredTotal} ml</span>
+                                    </div>
+
+                                    <div className="overflow-x-auto border border-amber-900/10 rounded-xl">
+                                        <table className="w-full text-left border-collapse text-xs">
+                                            <thead>
+                                                <tr className="bg-amber-900 text-white font-black text-center">
+                                                    <th className="p-3 whitespace-nowrap">日期</th>
+                                                    <th className="p-3 whitespace-nowrap">酒類</th>
+                                                    <th className="p-3 whitespace-nowrap">杯數</th>
+                                                    <th className="p-3 whitespace-nowrap">容量</th>
+                                                    <th className="p-3 whitespace-nowrap">總計</th>
+                                                    <th className="p-3 whitespace-nowrap">備註</th>
+                                                    <th className="p-3 whitespace-nowrap">誰</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-amber-900/10 font-bold">
+                                                {filteredRows.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan="7" className="p-8 text-center text-amber-900/40 font-black">無此酒類的飲用記錄</td>
+                                                    </tr>
+                                                ) : (
+                                                    filteredRows.map((row, i) => (
+                                                        <tr key={i} className="hover:bg-amber-50/30 text-amber-950 text-center">
+                                                            <td className="p-3 whitespace-nowrap font-mono">{row[2]}</td>
+                                                            <td className="p-3 whitespace-nowrap">{row[3]}</td>
+                                                            <td className="p-3 whitespace-nowrap">{row[4]}</td>
+                                                            <td className="p-3 whitespace-nowrap font-mono">{row[5]}mL</td>
+                                                            <td className="p-3 whitespace-nowrap font-mono">{row[6]}mL</td>
+                                                            <td className="p-3 whitespace-nowrap font-mono font-black text-amber-900">{row[7]}</td>
+                                                            <td className="p-3 max-w-[100px] truncate">{row[8]}</td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const WineApp = ({ apiToken }) => {
+            const apiUrl = 'https://script.google.com/macros/s/AKfycbylZOr-mY4m822xXNBZgp7uAaeJ_6eT-ZxwZYc9YGNdweiyz5x7l0U8ekSaY9_9MVrP/exec';
 
             const getTodayString = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; };
             const [fullDate, setFullDate] = React.useState(getTodayString());
             const [showCalendar, setShowCalendar] = React.useState(false);
             const [formData, setFormData] = React.useState({ user: '', category: '', cup: 1, volume: 330, note: '' });
             const [status, setStatus] = React.useState('idle');
+            const [view, setView] = React.useState('input');
             const successRef = React.useRef(null);
 
             const drinkTypes = [
@@ -272,6 +956,55 @@
 
             const volumePresets = [50, 100, 330, 500];
             const totalVolume = Math.round((Number(formData.cup) * Number(formData.volume)) * 10) / 10;
+
+            const changeView = React.useCallback((newView) => {
+                if (newView === 'report') {
+                    if (typeof google !== 'undefined' && google.script && google.script.history) {
+                        google.script.history.push({ view: 'report' }, { id: apiToken }, 'report');
+                        setView('report');
+                    } else {
+                        window.history.pushState({ view: 'report' }, '');
+                        setView('report');
+                    }
+                } else if (newView === 'input') {
+                    const isAtReport = view === 'report';
+                    if (isAtReport) {
+                        window.history.back();
+                    } else {
+                        setView('input');
+                    }
+                } else {
+                    setView(newView);
+                }
+            }, [view, apiToken]);
+
+            React.useEffect(() => {
+                if (typeof google !== 'undefined' && google.script && google.script.history) {
+                    google.script.history.setChangeHandler((event) => {
+                        if (event.state && event.state.view) {
+                            setView(event.state.view);
+                        } else if (event.location && event.location.hash === 'report') {
+                            setView('report');
+                        } else {
+                            setView('input');
+                        }
+                    });
+                } else {
+                    window.history.replaceState({ view: 'input' }, '');
+
+                    const handlePopState = (event) => {
+                        if (event.state && event.state.view) {
+                            setView(event.state.view);
+                        } else {
+                            setView('input');
+                        }
+                    };
+                    window.addEventListener('popstate', handlePopState);
+                    return () => {
+                        window.removeEventListener('popstate', handlePopState);
+                    };
+                }
+            }, []);
 
             React.useEffect(() => { if (status === 'success' && successRef.current) successRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, [status]);
 
@@ -305,37 +1038,9 @@
             const adjustVolume = (val) => setFormData(p => ({ ...p, volume: Math.max(0, Number(p.volume) + val) }));
             const handleCategorySelect = (drink) => setFormData(p => ({ ...p, category: drink.name, volume: drink.defaultVol }));
 
-            if (authStatus === 'loading') {
-                return (
-                    <div className="min-h-screen flex items-center justify-center bg-slate-50 text-amber-900 font-black px-10 text-center">
-                        <div className="space-y-6">
-                            <Icon name="Loader" className="w-16 h-16 mx-auto text-amber-500" />
-                            <div className="space-y-2">
-                                <p className="tracking-[0.2em] uppercase italic text-xl font-black">正在安全驗證中...</p>
-                                <p className="text-xs text-slate-400 font-medium tracking-widest">正在連線至 Google 伺服器</p>
-                            </div>
-                        </div>
-                    </div>
-                );
-            }
-
-            if (authStatus === 'denied') {
-                return (
-                    <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-400 font-black p-10">
-                        <div className="text-center space-y-8 max-w-sm">
-                            <div className="text-8xl">🚧</div>
-                            <div>
-                                <p className="tracking-[0.3em] uppercase italic text-sm mb-2 font-black text-slate-500">System Under Maintenance</p>
-                                <p className="text-[10px] opacity-50 tracking-widest font-mono font-black uppercase">請確認網址末端 ID 是否正確</p>
-                            </div>
-                        </div>
-                    </div>
-                );
-            }
-
             if (status === 'success') {
                 return (
-                    <div className="relative min-h-screen z-10 flex items-center justify-center p-4 pb-20 text-center text-amber-950 font-black">
+                    <div className="relative min-h-[80vh] z-10 flex items-center justify-center p-4 pb-20 text-center text-amber-950 font-black">
                         <BubbleBg />
                         <div ref={successRef} className="glass-card rounded-[3rem] p-10 text-center shadow-2xl animate-in zoom-in duration-300 border-b-8 border-green-500 w-full max-w-md">
                             <div className="bg-green-500 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl"><Icon name="Check" className="w-12 h-12 text-white" /></div>
@@ -347,22 +1052,29 @@
                 );
             }
 
+            if (view === 'report') {
+                return <WineReportPage setView={changeView} apiUrl={apiUrl} apiToken={apiToken} />;
+            }
+
             return (
                 <div className="relative min-h-screen z-10 pb-32 font-black">
                     <BubbleBg />
                     <div className="max-w-md mx-auto px-5 py-10 relative z-20 font-black">
-                        <div className="text-center mb-10 animate-[float_5s_ease-in-out_infinite]">
+                        <div className="text-center mb-10 animate-[float_5s_ease-in-out_infinite] relative">
                             <h1 className="text-4xl font-black text-amber-500 tracking-tighter mb-1 uppercase italic text-balance font-black">HAPPYDRINK</h1>
                             <p className="text-amber-900 text-sm font-bold tracking-widest uppercase italic">Every bubble counts</p>
+                            <button type="button" onClick={() => changeView('report')} className="absolute bottom-0 right-2 p-3 bg-amber-100 rounded-full text-amber-900 hover:bg-amber-200 transition-all shadow-sm cursor-pointer">
+                                <Icon name="History" className="w-5 h-5" />
+                            </button>
                         </div>
                         <form onSubmit={handleSubmit} className="space-y-6">
                             <section className={`glass-card rounded-[2.5rem] p-6 shadow-sm border-2 border-transparent text-center relative font-black ${showCalendar ? 'z-[50]' : 'z-20'}`}>
-                                <label className="text-[14px] font-black text-amber-900 tracking-widest mb-4 flex items-center justify-center"><Icon name="Calendar" className="w-4 h-4 mr-2 text-amber-900" /> 享受日期 <span className="text-red-600 ml-1 font-black font-black font-black">*</span></label>
+                                <label className="text-[14px] font-black text-amber-900 tracking-widest mb-4 flex items-center justify-center"><Icon name="Calendar" className="w-4 h-4 mr-2 text-amber-900" /> 享受日期 <span className="text-red-600 ml-1 font-black">*</span></label>
                                 <button type="button" onClick={() => setShowCalendar(true)} className="w-full p-4 bg-amber-50/50 rounded-2xl border-2 border-amber-100 text-amber-900 font-black outline-none text-xl shadow-inner text-center calendar-btn cursor-pointer">{fullDate.replace(/-/g, ' / ')}</button>
-                                {showCalendar && <CustomCalendar selectedDate={fullDate} onSelect={setFullDate} onClose={() => setShowCalendar(false)} />}
+                                {showCalendar && <WineCalendar selectedDate={fullDate} onSelect={setFullDate} onClose={() => setShowCalendar(false)} />}
                             </section>
                             <section className="glass-card rounded-[2.5rem] p-6 shadow-sm border-2 border-transparent text-center font-black">
-                                <label className="text-[14px] font-black text-amber-900 tracking-widest mb-4 flex items-center justify-center"><Icon name="User" className="w-4 h-4 mr-2 text-amber-900" /> 誰喝酒!! <span className="text-red-600 ml-1 font-black font-black font-black">*</span></label>
+                                <label className="text-[14px] font-black text-amber-900 tracking-widest mb-4 flex items-center justify-center"><Icon name="User" className="w-4 h-4 mr-2 text-amber-900" /> 誰喝酒!! <span className="text-red-600 ml-1 font-black">*</span></label>
                                 <div className="grid grid-cols-2 gap-4 font-black">
                                     {["庭", "珊"].map(u => (<button key={u} type="button" onClick={() => setFormData(p => ({ ...p, user: u }))} className={`user-card relative py-4 rounded-2xl overflow-hidden flex items-center justify-center font-black text-xl border-2 transition-all active:scale-95 cursor-pointer ${formData.user === u ? 'active' : 'glass-card bg-amber-50/50 border-amber-100 text-amber-900'}`}>{u}</button>))}
                                 </div>
@@ -371,7 +1083,7 @@
                                 {drinkTypes.map(d => (
                                     <button key={d.name} type="button" onClick={() => handleCategorySelect(d)} className={`drink-card relative h-36 rounded-[2.5rem] overflow-hidden flex flex-col items-center justify-center border-2 border-transparent cursor-pointer ${formData.category === d.name ? 'active' : 'bg-white/40 opacity-90 shadow-sm'}`}>
                                         <div className="flex items-center justify-center w-full h-full p-4 font-black">
-                                            <DrinkImage name={d.name} emoji={d.emoji} />
+                                            <WineImage name={d.name} emoji={d.emoji} />
                                         </div>
                                     </button>
                                 ))}
@@ -381,7 +1093,7 @@
                                 <div className="w-full max-w-[310px] flex items-center justify-between glass-card bg-white/40 p-2 px-4 rounded-3xl border-2 border-amber-100 min-w-0 font-black">
                                     <button type="button" onClick={() => adjustCup(-1)} className="w-11 h-11 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-950 active:scale-90 transition-transform shadow-sm flex-shrink-0 cursor-pointer font-black"><Icon name="Minus" className="w-4 h-4" /></button>
                                     <div className="text-5xl font-mono font-black text-amber-950 px-2 tracking-tighter leading-none">{formData.cup}</div>
-                                    <button type="button" onClick={() => adjustCup(1)} className="w-11 h-11 rounded-2xl bg-amber-950 flex items-center justify-center text-white active:scale-90 transition-transform shadow-md flex-shrink-0 cursor-pointer font-black font-black"><Icon name="Plus" className="w-4 h-4" /></button>
+                                    <button type="button" onClick={() => adjustCup(1)} className="w-11 h-11 rounded-2xl bg-amber-950 flex items-center justify-center text-white active:scale-90 transition-transform shadow-md flex-shrink-0 cursor-pointer"><Icon name="Plus" className="w-4 h-4" /></button>
                                 </div>
                             </div>
                             <div className="glass-card rounded-[2.5rem] p-6 shadow-inner flex flex-col items-center font-black">
@@ -389,7 +1101,7 @@
                                 <div className="flex flex-col w-full items-center gap-6 font-black">
                                     <div className="w-full max-w-[310px] flex items-center justify-between glass-card bg-white/40 p-2 px-4 rounded-3xl border-2 border-amber-100 min-w-0 font-black">
                                         <button type="button" onClick={() => adjustVolume(-10)} className="w-11 h-11 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-950 active:scale-90 transition-transform shadow-sm flex-shrink-0 cursor-pointer font-black"><Icon name="Minus" className="w-4 h-4" /></button>
-                                        <div className="text-5xl font-mono font-black text-amber-950 px-2 tracking-tight leading-none font-black font-black">{formData.volume}</div>
+                                        <div className="text-5xl font-mono font-black text-amber-950 px-2 tracking-tight leading-none">{formData.volume}</div>
                                         <button type="button" onClick={() => adjustVolume(10)} className="w-11 h-11 rounded-2xl bg-amber-600 flex items-center justify-center text-white active:scale-90 transition-transform shadow-md shadow-amber-200 flex-shrink-0 cursor-pointer font-black"><Icon name="Plus" className="w-4 h-4" /></button>
                                     </div>
                                     <div className="grid grid-cols-4 gap-2 w-full font-black">
@@ -397,23 +1109,242 @@
                                     </div>
                                 </div>
                             </div>
-                            <div className="glass-card rounded-[2.5rem] p-8 shadow-inner flex flex-col items-center relative overflow-hidden border-2 border-amber-100/50 font-black font-black">
+                            <div className="glass-card rounded-[2.5rem] p-8 shadow-inner flex flex-col items-center relative overflow-hidden border-2 border-amber-100/50 font-black">
                                 <div className="absolute top-0 right-0 p-4 opacity-5 rotate-12 text-4xl pointer-events-none">✒️</div>
                                 <span className="text-[11px] font-black uppercase tracking-[0.5em] text-amber-900/40 mb-2 font-black">ADDITIONAL NOTES</span>
                                 <input type="text" value={formData.note} onChange={(e) => setFormData(p => ({ ...p, note: e.target.value }))} placeholder="..." className="w-full bg-transparent text-center text-xl font-bold text-amber-950 placeholder:text-amber-900/20 outline-none font-black" />
                             </div>
                             <div className="bg-amber-950 rounded-[2.5rem] p-8 text-white shadow-2xl flex flex-col items-center relative overflow-hidden font-black">
                                 <div className="absolute top-0 right-0 p-4 opacity-10 rotate-12 text-4xl">🥂</div>
-                                <span className="text-[11px] font-black uppercase tracking-[0.5em] opacity-40 mb-1 text-amber-500 font-black font-black font-black font-black font-black">TOTAL CONSUMPTION</span>
-                                <div className="text-6xl font-mono font-black tracking-tighter text-amber-50 font-black font-black">{totalVolume} <span className="text-xl font-bold opacity-40 ml-1">ml</span></div>
+                                <span className="text-[11px] font-black uppercase tracking-[0.5em] opacity-40 mb-1 text-amber-500 font-black">TOTAL CONSUMPTION</span>
+                                <div className="text-6xl font-mono font-black tracking-tighter text-amber-50">{totalVolume} <span className="text-xl font-bold opacity-40 ml-1">ml</span></div>
                             </div>
-                            <button type="submit" disabled={status === 'loading' || !formData.category || !formData.user} className={`w-full py-6 rounded-full font-black text-2xl shadow-2xl transition-all active:scale-95 flex items-center justify-center space-x-4 cursor-pointer font-black ${status === 'loading' ? 'bg-amber-200 text-amber-400 cursor-not-allowed' : 'bg-gradient-to-r from-amber-500 to-orange-600 text-white font-black'}`}>{status === 'loading' ? <Icon name="Loader" className="w-8 h-8 text-amber-900" /> : <span className="tracking-[0.2em] font-black uppercase italic text-amber-50 font-black font-black">乾杯!</span>}</button>
+                            <button type="submit" disabled={status === 'loading' || !formData.category || !formData.user} className={`w-full py-6 rounded-full font-black text-2xl shadow-2xl transition-all active:scale-95 flex items-center justify-center space-x-4 cursor-pointer ${status === 'loading' ? 'bg-amber-200 text-amber-400 cursor-not-allowed' : 'bg-gradient-to-r from-amber-500 to-orange-600 text-white'}`}>{status === 'loading' ? <Icon name="Loader" className="w-8 h-8 text-amber-900" /> : <span className="tracking-[0.2em] font-black uppercase italic text-amber-50">乾杯!</span>}</button>
                         </form>
                     </div>
                 </div>
             );
         };
+
+        // ==========================================
+        //         最外層主控元件 (App)
+        // ==========================================
+
+        const App = () => {
+            const getInitialTab = () => {
+                const tab = new URLSearchParams(window.location.search).get('tab');
+                return tab === 'wine' ? 'wine' : 'expense';
+            };
+            const [activeTab, setActiveTab] = React.useState(getInitialTab);
+            const [authStatus, setAuthStatus] = React.useState('loading');
+            const [apiToken, setApiToken] = React.useState("");
+            const [inputToken, setInputToken] = React.useState("");
+
+            const expenseApiUrl = 'https://script.google.com/macros/s/AKfycbxyB9Z2sJHxJ3533aqEYnCxMecQShD5nUBBsfYsJpgeM2aPOXTMKU44gwM8IS7M9eYU/exec';
+
+            // 統一金鑰驗證函數 (以記帳 API 進行驗證，金鑰通用)
+            const verifyToken = React.useCallback((idToVerify) => {
+                if (!idToVerify) return;
+                const cleanedId = idToVerify.replace(/["']/g, "").trim();
+                setAuthStatus('loading');
+
+                let isMounted = true;
+                let timeoutId;
+
+                window.onVerifySharedResult = (res) => {
+                    if (!isMounted) return;
+                    if (timeoutId) clearTimeout(timeoutId);
+                    if (res && res.auth === 'OK') {
+                        setApiToken(cleanedId);
+                        localStorage.setItem('api_token_id', cleanedId);
+                        setTimeout(() => { if (isMounted) setAuthStatus('authorized'); }, 100);
+                    } else {
+                        localStorage.removeItem('api_token_id');
+                        if (isMounted) {
+                            setAuthStatus('denied');
+                            alert('驗證失敗，請確認金鑰是否正確！');
+                        }
+                    }
+                    const s = document.getElementById('v-script-shared');
+                    if (s) s.remove();
+                };
+
+                timeoutId = setTimeout(() => {
+                    if (isMounted) {
+                        setAuthStatus('denied');
+                        alert('連線逾時，請稍後再試！');
+                    }
+                    const s = document.getElementById('v-script-shared');
+                    if (s) s.remove();
+                }, 8000);
+
+                const script = document.createElement('script');
+                script.id = 'v-script-shared';
+                script.src = `${expenseApiUrl}?action=verify&id=${encodeURIComponent(cleanedId)}&callback=onVerifySharedResult&_t=${Date.now()}`;
+                document.body.appendChild(script);
+            }, [expenseApiUrl]);
+
+            React.useEffect(() => {
+                const params = new URLSearchParams(window.location.search);
+                let id = params.get('id');
+                if (!id) {
+                    id = localStorage.getItem('api_token_id');
+                }
+                if (!id) {
+                    setAuthStatus('denied');
+                    return;
+                }
+                verifyToken(id);
+            }, [verifyToken]);
+
+            React.useEffect(() => {
+                if (activeTab === 'expense') {
+                    document.body.className = 'theme-expense';
+                    document.documentElement.style.setProperty('--scrollbar-thumb-color', '#F8BBD0');
+                } else {
+                    document.body.className = 'theme-wine';
+                    document.documentElement.style.setProperty('--scrollbar-thumb-color', '#fbbf24');
+                }
+            }, [activeTab]);
+
+            if (authStatus === 'loading') {
+                const loaderColorClass = activeTab === 'expense' ? 'text-pink-600' : 'text-amber-500';
+                return (
+                    <div className="min-h-screen flex items-center justify-center text-center px-10">
+                        <div className="space-y-6">
+                            <Icon name="Loader" className={`w-16 h-16 mx-auto ${loaderColorClass}`} />
+                            <div className="space-y-2">
+                                <p className="tracking-[0.2em] uppercase italic text-xl font-black text-gray-700">正在安全驗證中...</p>
+                                <p className="text-xs text-slate-400 font-medium tracking-widest">正在連線至 Google 伺服器</p>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (authStatus === 'denied') {
+                const handleManualLogin = (e) => {
+                    e.preventDefault();
+                    if (!inputToken.trim()) return;
+                    verifyToken(inputToken.trim());
+                };
+
+                const cardBorder = activeTab === 'expense' ? 'border-pink-100' : 'border-amber-900/20';
+                const keyColorClass = activeTab === 'expense' ? 'text-pink-600' : 'text-amber-900';
+                const buttonBg = activeTab === 'expense' ? 'bg-pink-500 hover:bg-pink-600 shadow-pink-100' : 'bg-amber-900 hover:bg-amber-950 shadow-amber-100';
+                const focusBorder = activeTab === 'expense' ? 'focus:border-pink-500 hover:border-pink-200' : 'focus:border-amber-900 hover:border-amber-200';
+
+                return (
+                    <div className="min-h-screen flex flex-col">
+                        {/* 未登入狀態下依然允許切換 Tab 來變更驗證畫面的主題風格 */}
+                        <header className="w-full max-w-md mx-auto px-4 pt-4 pb-2">
+                            <div className="glass-card rounded-3xl p-1.5 flex justify-between items-center shadow-lg border border-white/20 backdrop-blur-md bg-white/40">
+                                <button
+                                    onClick={() => setActiveTab('expense')}
+                                    className={`flex-1 py-3 px-4 rounded-2xl font-bold text-sm tracking-widest transition-all duration-300 flex items-center justify-center space-x-1 cursor-pointer ${activeTab === 'expense'
+                                        ? 'bg-pink-500 text-white shadow-md scale-[1.02]'
+                                        : 'text-gray-500 hover:text-pink-500 bg-transparent'
+                                        }`}
+                                >
+                                    <span>💰</span>
+                                    <span>記帳本</span>
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('wine')}
+                                    className={`flex-1 py-3 px-4 rounded-2xl font-bold text-sm tracking-widest transition-all duration-300 flex items-center justify-center space-x-1 cursor-pointer ${activeTab === 'wine'
+                                        ? 'bg-amber-900 text-white shadow-md scale-[1.02]'
+                                        : 'text-gray-600 hover:text-amber-900 bg-transparent'
+                                        }`}
+                                >
+                                    <span>🍺</span>
+                                    <span>微醺時光</span>
+                                </button>
+                            </div>
+                        </header>
+
+                        <div className="flex-1 flex items-center justify-center px-6 py-6 pb-20">
+                            <div className={`bg-white rounded-3xl p-8 max-w-md w-full shadow-xl space-y-6 border ${cardBorder} text-center animate-in fade-in duration-300`}>
+                                <div className="text-6xl animate-bounce">🔑</div>
+                                <div className="space-y-2">
+                                    <h2 className={`text-2xl font-black ${keyColorClass} tracking-tight`}>需要授權金鑰(ID)</h2>
+                                    <p className="text-sm text-gray-500 font-medium">請輸入您的金鑰以載入系統</p>
+                                </div>
+                                <form onSubmit={handleManualLogin} className="space-y-4 text-left">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 pl-1">授權金鑰 / ID</label>
+                                        <input
+                                            required
+                                            type="password"
+                                            placeholder="請貼上或輸入金鑰..."
+                                            value={inputToken}
+                                            onChange={(e) => setInputToken(e.target.value)}
+                                            className={`w-full border-2 border-gray-100 ${focusBorder} rounded-2xl py-4 px-5 outline-none transition-all text-base font-mono font-bold text-gray-700 bg-gray-50 placeholder:text-gray-300`}
+                                        />
+                                    </div>
+                                    <button
+                                        type="submit"
+                                        className={`w-full py-4 rounded-2xl font-bold text-white ${buttonBg} shadow-lg transition-all active:scale-95 cursor-pointer text-center text-lg tracking-widest`}
+                                    >
+                                        確認驗證
+                                    </button>
+                                </form>
+                                <div className="text-[10px] text-gray-400 font-medium leading-relaxed pt-2 border-t border-gray-50">
+                                    驗證成功後，此裝置將自動記憶金鑰，<br />
+                                    下次即可直接開啟使用。
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen flex flex-col">
+                    {/* 頂端切換 Header */}
+                    <header className="sticky top-0 z-[150] w-full max-w-md mx-auto px-4 pt-4 pb-2">
+                        <div className="glass-card rounded-3xl p-1.5 flex justify-between items-center shadow-lg border border-white/20 backdrop-blur-md bg-white/40">
+                            <button
+                                onClick={() => setActiveTab('expense')}
+                                className={`flex-1 py-3 px-4 rounded-2xl font-bold text-sm tracking-widest transition-all duration-300 flex items-center justify-center space-x-1 cursor-pointer ${activeTab === 'expense'
+                                    ? 'bg-pink-500 text-white shadow-md scale-[1.02]'
+                                    : 'text-gray-500 hover:text-pink-500 bg-transparent'
+                                    }`}
+                            >
+                                <span>💰</span>
+                                <span>記帳本</span>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('wine')}
+                                className={`flex-1 py-3 px-4 rounded-2xl font-bold text-sm tracking-widest transition-all duration-300 flex items-center justify-center space-x-1 cursor-pointer ${activeTab === 'wine'
+                                    ? 'bg-amber-900 text-white shadow-md scale-[1.02]'
+                                    : 'text-gray-600 hover:text-amber-900 bg-transparent'
+                                    }`}
+                            >
+                                <span>🍺</span>
+                                <span>微醺時光</span>
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* 主要內容渲染區 */}
+                    <main className="flex-1">
+                        {activeTab === 'expense' ? <ExpenseApp apiToken={apiToken} /> : <WineApp apiToken={apiToken} />}
+                    </main>
+                </div>
+            );
+        };
+
         ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+    <script>
+        // 註冊記帳 PWA Service Worker，保留其 PWA 功能
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./記帳網頁/sw.js')
+                    .then((reg) => console.log('Service Worker registered successfully.', reg))
+                    .catch((err) => console.log('Service Worker registration failed.', err));
+            });
+        }
     </script>
 </body>
 
