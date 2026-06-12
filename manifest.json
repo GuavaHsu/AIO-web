@@ -2,7 +2,7 @@
   "name": "\u200B",
   "short_name": "養成記帳好習慣!!",
   "description": "幫助你養成每天記帳與記錄微醺生活的好工具",
-  "start_url": "./index_AIO.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#FCE4EC",
   "theme_color": "#E91E63",
