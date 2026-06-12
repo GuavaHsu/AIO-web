@@ -4,12 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>生活管家 (記帳 & 微醺)</title>
-    <link rel="manifest" href="./記帳網頁/manifest.json">
+    <title>養成記帳好習慣!!</title>
+    <link rel="manifest" href="./manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="生活管家">
-    <link rel="apple-touch-icon" href="./記帳網頁/icon-192.png">
+    <meta name="apple-mobile-web-app-title" content="養成記帳好習慣!!">
+    <link rel="apple-touch-icon" href="./icon-192.png">
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -1340,7 +1340,7 @@
         // 註冊記帳 PWA Service Worker，保留其 PWA 功能
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./記帳網頁/sw.js')
+                navigator.serviceWorker.register('./sw.js')
                     .then((reg) => console.log('Service Worker registered successfully.', reg))
                     .catch((err) => console.log('Service Worker registration failed.', err));
             });
