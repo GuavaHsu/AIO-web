@@ -1,10 +1,16 @@
-const CACHE_NAME = 'accounting-pwa-v5';
+const CACHE_NAME = 'accounting-pwa-v6';
 const ASSETS_TO_CACHE = [
   './',
-  './index.html',
+  './index_AIO.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
+  './啤酒.png',
+  './沙瓦.png',
+  './葡萄酒.png',
+  './清酒.png',
+  './水果酒.png',
+  './其他.png',
   'https://unpkg.com/react@18/umd/react.production.min.js',
   'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
   'https://unpkg.com/@babel/standalone/babel.min.js',
