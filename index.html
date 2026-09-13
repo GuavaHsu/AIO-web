@@ -2508,10 +2508,14 @@
 
             const expenseApiUrl = 'https://script.google.com/macros/s/AKfycbxyB9Z2sJHxJ3533aqEYnCxMecQShD5nUBBsfYsJpgeM2aPOXTMKU44gwM8IS7M9eYU/exec';
             const wineApiUrl = 'https://script.google.com/macros/s/AKfycbylZOr-mY4m822xXNBZgp7uAaeJ_6eT-ZxwZYc9YGNdweiyz5x7l0U8ekSaY9_9MVrP/exec';
-            const verifyToken = React.useCallback((idToVerify) => {
+            
+            // 加入 isSilent 參數：若為快取秒開驗證，完全不阻擋畫面，背景默默執行確認
+            const verifyToken = React.useCallback((idToVerify, isSilent = false) => {
                 if (!idToVerify) return;
                 const cleanedId = idToVerify.replace(/["']/g, "").trim();
-                setAuthStatus('loading');
+                if (!isSilent) {
+                    setAuthStatus('loading');
+                }
                 setAuthErrorMsg("");
 
                 let isMounted = true;
@@ -2523,9 +2527,11 @@
                     if (res && res.auth === 'OK') {
                         setApiToken(cleanedId);
                         safeStorage.setItem('api_token_id', cleanedId);
-                        setTimeout(() => { if (isMounted) setAuthStatus('authorized'); }, 100);
+                        safeStorage.setItem('api_token_verified', cleanedId); // 記錄驗證成功快取標記
+                        setTimeout(() => { if (isMounted) setAuthStatus('authorized'); }, 50);
                     } else {
                         safeStorage.removeItem('api_token_id');
+                        safeStorage.removeItem('api_token_verified');
                         if (isMounted) {
                             setAuthStatus('denied');
                             setAuthErrorMsg('驗證失敗，請確認金鑰是否正確！');
@@ -2536,7 +2542,7 @@
                 };
 
                 timeoutId = setTimeout(() => {
-                    if (isMounted) {
+                    if (isMounted && !isSilent) {
                         setAuthStatus('denied');
                         setAuthErrorMsg('連線逾時，請檢查網路連線或稍後再試！');
                     }
@@ -2560,7 +2566,20 @@
                     setAuthStatus('denied');
                     return;
                 }
-                verifyToken(id);
+
+                const cleanedId = id.replace(/["']/g, "").trim();
+                const cachedVerified = safeStorage.getItem('api_token_verified');
+
+                // ⚡ 快取驗證判定：若此裝置先前已驗證通過此金鑰，0.01 秒直接秒開進系統！
+                if (cachedVerified && cachedVerified === cleanedId) {
+                    setApiToken(cleanedId);
+                    setAuthStatus('authorized');
+                    // 背景靜默確認（若金鑰被雲端修改才會自動退回登入頁，平常使用者完全感覺不到等待）
+                    verifyToken(cleanedId, true);
+                } else {
+                    // 第一次輸入金鑰或換了新金鑰，才需要等待連線驗證
+                    verifyToken(cleanedId, false);
+                }
             }, [verifyToken]);
 
             React.useEffect(() => {
