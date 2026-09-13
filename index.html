@@ -79,7 +79,9 @@
                 Download: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>),
                 Upload: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>),
                 Copy: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>),
-                Trash: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>)
+                Trash: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>),
+                Cloud: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>),
+                RefreshCw: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>)
             };
             return icons[name] || null;
         };
@@ -1078,7 +1080,7 @@
             return Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
         };
 
-        const PeriodApp = () => {
+        const PeriodApp = ({ apiToken, apiUrl }) => {
             const [useDefaultParams, setUseDefaultParams] = React.useState(() => {
                 const saved = safeStorage.getItem('period_use_default_v4');
                 return saved !== null ? JSON.parse(saved) : true;
@@ -1100,6 +1102,10 @@
             const [showStats, setShowStats] = React.useState(false);
             const [mergePrompt, setMergePrompt] = React.useState(null);
             const [nonConsecutiveNotice, setNonConsecutiveNotice] = React.useState(false);
+
+            // 雲端同步狀態: 'idle' | 'loading' | 'saving' | 'synced' | 'error'
+            const [cloudStatus, setCloudStatus] = React.useState('idle');
+            const [lastCloudSyncTime, setLastCloudSyncTime] = React.useState(null);
 
             const [backupNotice, setBackupNotice] = React.useState(null);
             const [showRestoreModal, setShowRestoreModal] = React.useState(false);
@@ -1134,29 +1140,95 @@
                 return saved ? JSON.parse(saved) : {};
             });
 
-            React.useEffect(() => {
-                safeStorage.setItem('period_use_default_v4', JSON.stringify(useDefaultParams));
-            }, [useDefaultParams]);
+            // 本地快取自動備存
+            React.useEffect(() => { safeStorage.setItem('period_use_default_v4', JSON.stringify(useDefaultParams)); }, [useDefaultParams]);
+            React.useEffect(() => { safeStorage.setItem('period_cycle_len_v4', String(cycleLength)); }, [cycleLength]);
+            React.useEffect(() => { safeStorage.setItem('period_duration_v4', String(periodDuration)); }, [periodDuration]);
+            React.useEffect(() => { safeStorage.setItem('period_show_fertile_v4', JSON.stringify(showFertileWindow)); }, [showFertileWindow]);
+            React.useEffect(() => { safeStorage.setItem('period_ranges_v4', JSON.stringify(periods)); }, [periods]);
+            React.useEffect(() => { safeStorage.setItem('period_notes_v4', JSON.stringify(notes)); }, [notes]);
 
-            React.useEffect(() => {
-                safeStorage.setItem('period_cycle_len_v4', String(cycleLength));
-            }, [cycleLength]);
+            // --- 雲端試算表讀取 (GET JSONP) ---
+            const fetchFromCloud = React.useCallback(() => {
+                if (!apiUrl || !apiToken) return;
+                setCloudStatus('loading');
 
-            React.useEffect(() => {
-                safeStorage.setItem('period_duration_v4', String(periodDuration));
-            }, [periodDuration]);
+                const callbackName = 'onGetPeriodResult_' + Date.now();
+                let isHandled = false;
 
-            React.useEffect(() => {
-                safeStorage.setItem('period_show_fertile_v4', JSON.stringify(showFertileWindow));
-            }, [showFertileWindow]);
+                window[callbackName] = (res) => {
+                    isHandled = true;
+                    if (res && res.status === 'success' && res.data) {
+                        const cloudData = res.data;
+                        if (Array.isArray(cloudData.periods)) {
+                            setPeriods(cloudData.periods);
+                        }
+                        if (cloudData.notes && typeof cloudData.notes === 'object') {
+                            setNotes(cloudData.notes);
+                        }
+                        if (cloudData.settings) {
+                            if (typeof cloudData.settings.useDefaultParams === 'boolean') setUseDefaultParams(cloudData.settings.useDefaultParams);
+                            if (cloudData.settings.cycleLength) setCycleLength(Number(cloudData.settings.cycleLength));
+                            if (cloudData.settings.periodDuration) setPeriodDuration(Number(cloudData.settings.periodDuration));
+                            if (typeof cloudData.settings.showFertileWindow === 'boolean') setShowFertileWindow(cloudData.settings.showFertileWindow);
+                        }
+                        setCloudStatus('synced');
+                        if (res.updatedAt) setLastCloudSyncTime(res.updatedAt);
+                    } else {
+                        setCloudStatus('synced'); // 雲端尚無資料，以本機為準
+                    }
+                    delete window[callbackName];
+                    const s = document.getElementById(callbackName);
+                    if (s) s.remove();
+                };
 
-            React.useEffect(() => {
-                safeStorage.setItem('period_ranges_v4', JSON.stringify(periods));
-            }, [periods]);
+                const script = document.createElement('script');
+                script.id = callbackName;
+                script.src = `${apiUrl}?action=getPeriodData&id=${encodeURIComponent(apiToken)}&api_token=${encodeURIComponent(apiToken)}&callback=${callbackName}&_t=${Date.now()}`;
+                script.onerror = () => {
+                    if (!isHandled) {
+                        setCloudStatus('error');
+                        if (window[callbackName]) delete window[callbackName];
+                        const s = document.getElementById(callbackName);
+                        if (s) s.remove();
+                    }
+                };
+                document.body.appendChild(script);
+            }, [apiUrl, apiToken]);
 
+            // 首次載入時自動從雲端拉取
             React.useEffect(() => {
-                safeStorage.setItem('period_notes_v4', JSON.stringify(notes));
-            }, [notes]);
+                fetchFromCloud();
+            }, [fetchFromCloud]);
+
+            // --- 雲端試算表儲存 (POST) ---
+            const saveToCloud = React.useCallback((updatedPeriods, updatedNotes, updatedSettings) => {
+                if (!apiUrl || !apiToken) return;
+                setCloudStatus('saving');
+
+                const payload = {
+                    type: 'period',
+                    api_token: apiToken,
+                    periods: updatedPeriods !== undefined ? updatedPeriods : periods,
+                    notes: updatedNotes !== undefined ? updatedNotes : notes,
+                    settings: updatedSettings !== undefined ? updatedSettings : {
+                        useDefaultParams,
+                        cycleLength,
+                        periodDuration,
+                        showFertileWindow
+                    }
+                };
+
+                fetch(apiUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload), keepalive: true })
+                    .then(() => {
+                        setCloudStatus('synced');
+                        const now = new Intl.DateTimeFormat('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
+                        setLastCloudSyncTime(now);
+                    })
+                    .catch(() => {
+                        setCloudStatus('error');
+                    });
+            }, [apiUrl, apiToken, periods, notes, useDefaultParams, cycleLength, periodDuration, showFertileWindow]);
 
             const cleanAndMergePeriods = (list) => {
                 if (!list || list.length === 0) return [];
@@ -1212,7 +1284,7 @@
                 }
 
                 const validCycleList = history.map(h => h.cycleDays).filter(d => d !== null);
-                const avgCycle = validCycleList.length > 0
+                const avgCycle = validCycleList.length > 0 
                     ? Math.round(validCycleList.reduce((a, b) => a + b, 0) / validCycleList.length)
                     : null;
                 const avgDuration = Math.round(totalDuration / sorted.length);
@@ -1373,7 +1445,9 @@
                         end,
                         isClosed: true
                     };
-                    setPeriods(cleanAndMergePeriods([...periods, newPeriod]));
+                    const nextPeriods = cleanAndMergePeriods([...periods, newPeriod]);
+                    setPeriods(nextPeriods);
+                    saveToCloud(nextPeriods, notes);
                     setSelectedDates([]);
                     return;
                 }
@@ -1421,7 +1495,9 @@
                     end: addDays(singleDate, spanDays - 1),
                     isClosed: true
                 };
-                setPeriods(cleanAndMergePeriods([...periods, newPeriod]));
+                const nextPeriods = cleanAndMergePeriods([...periods, newPeriod]);
+                setPeriods(nextPeriods);
+                saveToCloud(nextPeriods, notes);
                 setSelectedDates([]);
             };
 
@@ -1429,13 +1505,11 @@
                 if (sortedSelectedDates.length === 0) return;
                 setNonConsecutiveNotice(false);
 
-                setNotes(prev => {
-                    const nextNotes = { ...prev };
-                    sortedSelectedDates.forEach(d => {
-                        delete nextNotes[d];
-                    });
-                    return nextNotes;
+                const nextNotes = { ...notes };
+                sortedSelectedDates.forEach(d => {
+                    delete nextNotes[d];
                 });
+                setNotes(nextNotes);
 
                 let currentPeriods = [...periods];
                 for (const dateStr of sortedSelectedDates) {
@@ -1470,40 +1544,40 @@
                     currentPeriods = nextPeriods;
                 }
 
-                setPeriods(cleanAndMergePeriods(currentPeriods));
+                const nextMerged = cleanAndMergePeriods(currentPeriods);
+                setPeriods(nextMerged);
+                saveToCloud(nextMerged, nextNotes);
                 setSelectedDates([]);
             };
 
             const toggleNoteIconBatch = (iconId) => {
-                setNotes(prev => {
-                    const next = { ...prev };
-                    const allHave = sortedSelectedDates.every(d => next[d]?.icons?.includes(iconId));
+                const nextNotes = { ...notes };
+                const allHave = sortedSelectedDates.every(d => nextNotes[d]?.icons?.includes(iconId));
 
-                    sortedSelectedDates.forEach(d => {
-                        const cur = next[d] || { icons: [], note: "" };
-                        let newIcons = cur.icons || [];
-                        if (allHave) {
-                            newIcons = newIcons.filter(id => id !== iconId);
-                        } else {
-                            if (!newIcons.includes(iconId)) {
-                                newIcons = [...newIcons, iconId];
-                            }
+                sortedSelectedDates.forEach(d => {
+                    const cur = nextNotes[d] || { icons: [], note: "" };
+                    let newIcons = cur.icons || [];
+                    if (allHave) {
+                        newIcons = newIcons.filter(id => id !== iconId);
+                    } else {
+                        if (!newIcons.includes(iconId)) {
+                            newIcons = [...newIcons, iconId];
                         }
-                        next[d] = { ...cur, icons: newIcons };
-                    });
-                    return next;
+                    }
+                    nextNotes[d] = { ...cur, icons: newIcons };
                 });
+                setNotes(nextNotes);
+                saveToCloud(periods, nextNotes);
             };
 
             const updateNoteTextBatch = (text) => {
-                setNotes(prev => {
-                    const next = { ...prev };
-                    sortedSelectedDates.forEach(d => {
-                        const cur = next[d] || { icons: [], note: "" };
-                        next[d] = { ...cur, note: text };
-                    });
-                    return next;
+                const nextNotes = { ...notes };
+                sortedSelectedDates.forEach(d => {
+                    const cur = nextNotes[d] || { icons: [], note: "" };
+                    nextNotes[d] = { ...cur, note: text };
                 });
+                setNotes(nextNotes);
+                saveToCloud(periods, nextNotes);
             };
 
             const handleExportBackup = () => {
@@ -1635,38 +1709,9 @@
                 }
             };
 
-            // 構建月曆格子：月初補上前月至週日，月底補上下月至週六
             const calendarCells = [];
-            const prevMonthLastDate = new Date(year, month, 0).getDate();
-            for (let i = firstDayOfMonth - 1; i >= 0; i--) {
-                const d = prevMonthLastDate - i;
-                const prevDate = new Date(year, month - 1, d);
-                calendarCells.push({
-                    dayNum: d,
-                    dateStr: toDateStr(prevDate),
-                    isCurrentMonth: false
-                });
-            }
-            for (let i = 1; i <= daysInMonth; i++) {
-                const curDate = new Date(year, month, i);
-                calendarCells.push({
-                    dayNum: i,
-                    dateStr: toDateStr(curDate),
-                    isCurrentMonth: true
-                });
-            }
-            const lastDayOfWeek = new Date(year, month, daysInMonth).getDay();
-            if (lastDayOfWeek < 6) {
-                const padCount = 6 - lastDayOfWeek;
-                for (let i = 1; i <= padCount; i++) {
-                    const nextDate = new Date(year, month + 1, i);
-                    calendarCells.push({
-                        dayNum: i,
-                        dateStr: toDateStr(nextDate),
-                        isCurrentMonth: false
-                    });
-                }
-            }
+            for (let i = 0; i < firstDayOfMonth; i++) calendarCells.push(null);
+            for (let i = 1; i <= daysInMonth; i++) calendarCells.push(i);
 
             const getDayStatus = (dateStr) => {
                 const activePeriod = getPeriodAtDate(dateStr);
@@ -1683,10 +1728,33 @@
                 <div className="max-w-md mx-auto min-h-screen pb-28 px-4 pt-4 text-gray-800">
                     <div className="bg-white rounded-3xl p-5 shadow-sm border-t-8 border-rose-500 mb-4 flex justify-between items-center">
                         <div>
-                            <h1 className="text-xl font-black text-gray-800 flex items-center gap-2">
-                                <span className="text-rose-600"><Icon name="Heart" className="w-5 h-5 inline" /></span> 生理期日誌
-                            </h1>
-                            <p className="text-xs text-gray-400 font-medium mt-0.5">預測經期與日常症狀追蹤</p>
+                            <div className="flex items-center gap-2">
+                                <h1 className="text-xl font-black text-gray-800 flex items-center gap-1.5">
+                                    <span className="text-rose-600"><Icon name="Heart" className="w-5 h-5 inline" /></span> 生理期日誌
+                                </h1>
+                                {apiToken && (
+                                    <button
+                                        type="button"
+                                        onClick={fetchFromCloud}
+                                        title={cloudStatus === 'loading' ? '正在讀取雲端...' : cloudStatus === 'saving' ? '正在同步至雲端...' : '點擊手動同步雲端'}
+                                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all active:scale-95 cursor-pointer ${
+                                            cloudStatus === 'loading' || cloudStatus === 'saving'
+                                                ? 'bg-amber-100 text-amber-700 animate-pulse'
+                                                : cloudStatus === 'synced'
+                                                    ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+                                                    : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
+                                        }`}
+                                    >
+                                        <Icon name={cloudStatus === 'loading' || cloudStatus === 'saving' ? "Loader" : "Cloud"} className="w-3 h-3" />
+                                        <span>
+                                            {cloudStatus === 'loading' ? '讀取中' : cloudStatus === 'saving' ? '同步中' : '雲端同步'}
+                                        </span>
+                                    </button>
+                                )}
+                            </div>
+                            <p className="text-xs text-gray-400 font-medium mt-0.5">
+                                {lastCloudSyncTime ? `上次同步：${lastCloudSyncTime}` : '預測經期與日常症狀追蹤'}
+                            </p>
                         </div>
                         <div className="flex items-center gap-2">
                             <button
@@ -1929,30 +1997,24 @@
                         </div>
 
                         <div className={`grid grid-cols-7 gap-1 text-center font-bold select-none ${slideDir}`}>
-                            {calendarCells.map((cell) => {
-                                const { dayNum, dateStr, isCurrentMonth } = cell;
+                            {calendarCells.map((dayNum, idx) => {
+                                if (!dayNum) return <div key={`empty-${idx}`} className="aspect-square" />;
+
+                                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
                                 const isTodayDate = dateStr === toDateStr(today);
                                 const status = getDayStatus(dateStr);
                                 const isSelected = selectedDates.includes(dateStr);
                                 const dayNote = notes[dateStr];
 
-                                let bgStyle = isCurrentMonth ? "text-gray-700 hover:bg-rose-50" : "text-gray-400 hover:bg-rose-50/50 bg-gray-50/30";
+                                let bgStyle = "text-gray-700 hover:bg-rose-50";
                                 if (status.isPeriod) {
-                                    bgStyle = isCurrentMonth
-                                        ? "bg-red-500 text-white font-black shadow-sm shadow-red-200"
-                                        : "bg-red-400/80 text-white font-black shadow-sm";
+                                    bgStyle = "bg-red-500 text-white font-black shadow-sm shadow-red-200";
                                 } else if (status.isPredicted) {
-                                    bgStyle = isCurrentMonth
-                                        ? "bg-rose-50 text-rose-700 border-2 border-dashed border-rose-400"
-                                        : "bg-rose-50/40 text-rose-300 border-2 border-dashed border-rose-300";
+                                    bgStyle = "bg-rose-50 text-rose-700 border-2 border-dashed border-rose-400";
                                 } else if (status.isOvulationDay) {
-                                    bgStyle = isCurrentMonth
-                                        ? "bg-[#460b99] text-white font-black shadow-sm shadow-purple-200"
-                                        : "bg-[#460b99]/80 text-white font-black shadow-sm";
+                                    bgStyle = "bg-[#460b99] text-white font-black shadow-sm shadow-purple-200";
                                 } else if (status.isOvulationWindow) {
-                                    bgStyle = isCurrentMonth
-                                        ? "bg-purple-100 text-purple-700"
-                                        : "bg-purple-50 text-purple-300";
+                                    bgStyle = "bg-purple-100 text-purple-700";
                                 }
 
                                 return (
@@ -1970,9 +2032,7 @@
                                         }`}
                                     >
                                         <span className={`text-xs font-bold mt-0.5 flex items-center gap-0.5 ${
-                                            isTodayDate && !status.isPeriod && !status.isOvulationDay
-                                                ? 'text-red-600 font-black'
-                                                : (!isCurrentMonth && !status.isPeriod && !status.isOvulationDay ? 'text-gray-400' : '')
+                                            isTodayDate && !status.isPeriod && !status.isOvulationDay ? 'text-red-600 font-black' : ''
                                         }`}>
                                             {dayNum}
                                         </span>
@@ -2260,7 +2320,7 @@
             const [authErrorMsg, setAuthErrorMsg] = React.useState("");
 
             const expenseApiUrl = 'https://script.google.com/macros/s/AKfycbxyB9Z2sJHxJ3533aqEYnCxMecQShD5nUBBsfYsJpgeM2aPOXTMKU44gwM8IS7M9eYU/exec';
-
+            const wineApiUrl = 'https://script.google.com/macros/s/AKfycbylZOr-mY4m822xXNBZgp7uAaeJ_6eT-ZxwZYc9YGNdweiyz5x7l0U8ekSaY9_9MVrP/exec';
             const verifyToken = React.useCallback((idToVerify) => {
                 if (!idToVerify) return;
                 const cleanedId = idToVerify.replace(/["']/g, "").trim();
@@ -2395,7 +2455,7 @@
 
                         {activeTab === 'period' ? (
                             <main className="flex-1">
-                                <PeriodApp />
+                                <PeriodApp apiToken={apiToken} apiUrl={wineApiUrl} />
                             </main>
                         ) : (
                             <div className="flex-1 flex items-center justify-center px-6 py-6 pb-20">
@@ -2480,7 +2540,7 @@
                     <main className="flex-1">
                         {activeTab === 'expense' && <ExpenseApp apiToken={apiToken} />}
                         {activeTab === 'wine' && <WineApp apiToken={apiToken} />}
-                        {activeTab === 'period' && <PeriodApp />}
+                        {activeTab === 'period' && <PeriodApp apiToken={apiToken} apiUrl={wineApiUrl} />}
                     </main>
                 </div>
             );
