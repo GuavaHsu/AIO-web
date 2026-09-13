@@ -1103,8 +1103,7 @@
             const [mergePrompt, setMergePrompt] = React.useState(null);
             const [nonConsecutiveNotice, setNonConsecutiveNotice] = React.useState(false);
 
-            // 雲端同步與初次載入鎖定狀態
-            const [isInitialLoading, setIsInitialLoading] = React.useState(!!apiToken);
+            // SWR 秒開：如果有本地快取，不阻擋操作；雲端背景進行靜默確認
             const [cloudStatus, setCloudStatus] = React.useState('idle');
             const [lastCloudSyncTime, setLastCloudSyncTime] = React.useState(null);
 
@@ -1217,25 +1216,20 @@
                     });
             }, [apiUrl, apiToken, periods, notes, useDefaultParams, cycleLength, periodDuration, showFertileWindow]);
 
-            // --- 雲端試算表讀取 (依時間戳判定最新狀態，絕不聯集復活已刪除資料) ---
+            // --- 雲端試算表讀取 (支援伺服器 RAM 快取秒讀) ---
             const fetchFromCloud = React.useCallback(() => {
-                if (!apiUrl || !apiToken) {
-                    setIsInitialLoading(false);
-                    return;
-                }
+                if (!apiUrl || !apiToken) return;
                 setCloudStatus('loading');
 
                 const callbackName = 'onGetPeriodResult_' + Date.now();
                 let isHandled = false;
 
-                // 安全逾時防護 (超過 6 秒自動解鎖)
                 const timeoutId = setTimeout(() => {
                     if (!isHandled) {
                         isHandled = true;
-                        setIsInitialLoading(false);
                         setCloudStatus('synced');
                     }
-                }, 6000);
+                }, 5000);
 
                 window[callbackName] = (res) => {
                     if (isHandled) return;
@@ -1247,15 +1241,12 @@
                         const cloudTimestamp = Number(cloudData.updatedAt || 0);
                         const localTimestamp = Number(safeStorage.getItem('period_local_updated_at') || 0);
 
-                        // 讀取當前本機記錄
                         const localSavedP = safeStorage.getItem('period_ranges_v4');
                         const currentLocalP = localSavedP ? JSON.parse(localSavedP) : periods;
                         const localSavedN = safeStorage.getItem('period_notes_v4');
                         const currentLocalN = localSavedN ? JSON.parse(localSavedN) : notes;
 
-                        // 關鍵：依時間戳決定採用雲端或推送本地，不使用聯集合併避免已刪除資料復活
                         if (cloudTimestamp >= localTimestamp) {
-                            // 雲端較新或初次在新裝置載入：以雲端為主
                             const cleanedCloudPeriods = cleanAndMergePeriods(cloudData.periods || []);
                             const cloudNotes = cloudData.notes || {};
                             setPeriods(cleanedCloudPeriods);
@@ -1271,14 +1262,12 @@
                                 if (typeof cloudData.settings.showFertileWindow === 'boolean') setShowFertileWindow(cloudData.settings.showFertileWindow);
                             }
                         } else {
-                            // 本地較新 (離線曾修改)：將本地最新版本推送到雲端
                             saveToCloud(currentLocalP, currentLocalN);
                         }
 
                         setCloudStatus('synced');
                         if (res.updatedAt) setLastCloudSyncTime(res.updatedAt);
                     } else if (res && res.status === 'success' && !res.data) {
-                        // 雲端尚無資料：將本機現有資料初始化推上雲端
                         if (periods.length > 0 || Object.keys(notes).length > 0) {
                             saveToCloud(periods, notes);
                         }
@@ -1287,7 +1276,6 @@
                         setCloudStatus('synced');
                     }
 
-                    setIsInitialLoading(false);
                     delete window[callbackName];
                     const s = document.getElementById(callbackName);
                     if (s) s.remove();
@@ -1300,7 +1288,6 @@
                     if (!isHandled) {
                         isHandled = true;
                         clearTimeout(timeoutId);
-                        setIsInitialLoading(false);
                         setCloudStatus('error');
                         if (window[callbackName]) delete window[callbackName];
                         const s = document.getElementById(callbackName);
@@ -1310,7 +1297,6 @@
                 document.body.appendChild(script);
             }, [apiUrl, apiToken, periods, notes, cleanAndMergePeriods, saveToCloud]);
 
-            // 首次載入時自動從雲端拉取最新資料
             React.useEffect(() => {
                 fetchFromCloud();
             }, [fetchFromCloud]);
@@ -1385,7 +1371,6 @@
             }, [periods, cycleLength, periodDuration, useDefaultParams, stats]);
 
             const handleDateClick = (dateStr) => {
-                if (isInitialLoading) return;
                 setNonConsecutiveNotice(false);
                 setSelectedDates(prev => {
                     if (prev.includes(dateStr)) {
@@ -1453,14 +1438,12 @@
             };
 
             const handleCellMouseDown = (dateStr) => {
-                if (isInitialLoading) return;
                 isMouseDownRef.current = true;
                 dragStartRef.current = dateStr;
                 hasDraggedRef.current = false;
             };
 
             const handleCellMouseEnter = (dateStr) => {
-                if (isInitialLoading) return;
                 if (!isMouseDownRef.current || !dragStartRef.current) return;
                 if (dateStr === dragStartRef.current) return;
 
@@ -1482,7 +1465,6 @@
             };
 
             const selectToday = () => {
-                if (isInitialLoading) return;
                 const todayStr = toDateStr(today);
                 setViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
                 setSelectedDates([todayStr]);
@@ -1529,7 +1511,7 @@
             };
 
             const handlePeriodClick = () => {
-                if (isInitialLoading || sortedSelectedDates.length === 0) return;
+                if (sortedSelectedDates.length === 0) return;
 
                 if (isAllSelectedInPeriod) {
                     removeDatesFromPeriods(sortedSelectedDates);
@@ -1605,7 +1587,7 @@
             };
 
             const handleDeleteSelected = () => {
-                if (isInitialLoading || sortedSelectedDates.length === 0) return;
+                if (sortedSelectedDates.length === 0) return;
                 setNonConsecutiveNotice(false);
 
                 const nextNotes = { ...notes };
@@ -1649,13 +1631,11 @@
 
                 const nextMerged = cleanAndMergePeriods(currentPeriods);
                 setPeriods(nextMerged);
-                // 立即更新雲端，雲端直接保存刪除後的全新狀態
                 saveToCloud(nextMerged, nextNotes);
                 setSelectedDates([]);
             };
 
             const toggleNoteIconBatch = (iconId) => {
-                if (isInitialLoading) return;
                 const nextNotes = { ...notes };
                 const allHave = sortedSelectedDates.every(d => nextNotes[d]?.icons?.includes(iconId));
 
@@ -1676,7 +1656,6 @@
             };
 
             const updateNoteTextBatch = (text) => {
-                if (isInitialLoading) return;
                 const nextNotes = { ...notes };
                 sortedSelectedDates.forEach(d => {
                     const cur = nextNotes[d] || { icons: [], note: "" };
@@ -1803,13 +1782,11 @@
             const firstDayOfMonth = new Date(year, month, 1).getDay();
 
             const prevMonth = () => {
-                if (isInitialLoading) return;
                 setSlideDir("slide-right");
                 setViewDate(new Date(year, month - 1, 1));
             };
 
             const nextMonth = () => {
-                if (isInitialLoading) return;
                 setSlideDir("slide-left");
                 setViewDate(new Date(year, month + 1, 1));
             };
@@ -1823,7 +1800,6 @@
             };
 
             const handleTouchEnd = (e) => {
-                if (isInitialLoading) return;
                 const deltaX = e.changedTouches[0].clientX - touchStartX.current;
                 const deltaY = e.changedTouches[0].clientY - touchStartY.current;
                 if (Math.abs(deltaX) > 45 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
@@ -1832,9 +1808,38 @@
                 }
             };
 
+            // 構建月曆格子：月初補上前月至週日，月底補上下月至週六
             const calendarCells = [];
-            for (let i = 0; i < firstDayOfMonth; i++) calendarCells.push(null);
-            for (let i = 1; i <= daysInMonth; i++) calendarCells.push(i);
+            const prevMonthLastDate = new Date(year, month, 0).getDate();
+            for (let i = firstDayOfMonth - 1; i >= 0; i--) {
+                const d = prevMonthLastDate - i;
+                const prevDate = new Date(year, month - 1, d);
+                calendarCells.push({
+                    dayNum: d,
+                    dateStr: toDateStr(prevDate),
+                    isCurrentMonth: false
+                });
+            }
+            for (let i = 1; i <= daysInMonth; i++) {
+                const curDate = new Date(year, month, i);
+                calendarCells.push({
+                    dayNum: i,
+                    dateStr: toDateStr(curDate),
+                    isCurrentMonth: true
+                });
+            }
+            const lastDayOfWeek = new Date(year, month, daysInMonth).getDay();
+            if (lastDayOfWeek < 6) {
+                const padCount = 6 - lastDayOfWeek;
+                for (let i = 1; i <= padCount; i++) {
+                    const nextDate = new Date(year, month + 1, i);
+                    calendarCells.push({
+                        dayNum: i,
+                        dateStr: toDateStr(nextDate),
+                        isCurrentMonth: false
+                    });
+                }
+            }
 
             const getDayStatus = (dateStr) => {
                 const activePeriod = getPeriodAtDate(dateStr);
@@ -1858,7 +1863,6 @@
                                 {apiToken && (
                                     <button
                                         type="button"
-                                        disabled={isInitialLoading}
                                         onClick={fetchFromCloud}
                                         title={cloudStatus === 'loading' ? '正在讀取雲端...' : cloudStatus === 'saving' ? '正在同步至雲端...' : '點擊手動同步雲端'}
                                         className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all active:scale-95 cursor-pointer ${
@@ -1877,7 +1881,7 @@
                                 )}
                             </div>
                             <p className="text-xs text-gray-400 font-medium mt-0.5">
-                                {isInitialLoading ? '正在與雲端確認最新紀錄...' : (lastCloudSyncTime ? `上次同步：${lastCloudSyncTime}` : '預測經期與日常症狀追蹤')}
+                                {cloudStatus === 'loading' ? '正在與雲端確認最新紀錄...' : (lastCloudSyncTime ? `上次同步：${lastCloudSyncTime}` : '預測經期與日常症狀追蹤')}
                             </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -2115,21 +2119,14 @@
                         </div>
                     )}
 
-                    {/* 月曆卡片區塊 (含載入中保護遮罩) */}
+                    {/* 月曆卡片區塊 */}
                     <div
                         className="bg-white rounded-3xl p-5 shadow-sm mb-4 relative"
                         onTouchStart={handleTouchStart}
                         onTouchEnd={handleTouchEnd}
                     >
-                        {isInitialLoading && (
-                            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-30 rounded-3xl flex flex-col items-center justify-center space-y-3 animate-in fade-in">
-                                <Icon name="Loader" className="w-8 h-8 text-rose-600 animate-spin" />
-                                <div className="text-xs font-bold text-rose-700">正在確認雲端最新資料...</div>
-                            </div>
-                        )}
-
                         <div className="flex justify-between items-center mb-4 px-2">
-                            <button onClick={prevMonth} disabled={isInitialLoading} className="p-2 hover:bg-rose-50 text-rose-600 rounded-full active:scale-90 transition-all disabled:opacity-40">
+                            <button onClick={prevMonth} className="p-2 hover:bg-rose-50 text-rose-600 rounded-full active:scale-90 transition-all">
                                 <Icon name="ChevronLeft" className="w-5 h-5" />
                             </button>
                             <div className="flex items-center gap-2">
@@ -2138,15 +2135,14 @@
                                 </h2>
                                 <button
                                     type="button"
-                                    disabled={isInitialLoading}
                                     onClick={selectToday}
-                                    className="text-[11px] bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold px-2 py-0.5 rounded-lg active:scale-95 transition-all cursor-pointer disabled:opacity-40"
+                                    className="text-[11px] bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold px-2 py-0.5 rounded-lg active:scale-95 transition-all cursor-pointer"
                                     title="點選自動切換並選取今天"
                                 >
                                     今天
                                 </button>
                             </div>
-                            <button onClick={nextMonth} disabled={isInitialLoading} className="p-2 hover:bg-rose-50 text-rose-600 rounded-full active:scale-90 transition-all disabled:opacity-40">
+                            <button onClick={nextMonth} className="p-2 hover:bg-rose-50 text-rose-600 rounded-full active:scale-90 transition-all">
                                 <Icon name="ChevronRight" className="w-5 h-5" />
                             </button>
                         </div>
@@ -2156,31 +2152,36 @@
                         </div>
 
                         <div className={`grid grid-cols-7 gap-1 text-center font-bold select-none ${slideDir}`}>
-                            {calendarCells.map((dayNum, idx) => {
-                                if (!dayNum) return <div key={`empty-${idx}`} className="aspect-square" />;
-
-                                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                            {calendarCells.map((cell) => {
+                                const { dayNum, dateStr, isCurrentMonth } = cell;
                                 const isTodayDate = dateStr === toDateStr(today);
                                 const status = getDayStatus(dateStr);
                                 const isSelected = selectedDates.includes(dateStr);
                                 const dayNote = notes[dateStr];
 
-                                let bgStyle = "text-gray-700 hover:bg-rose-50";
+                                let bgStyle = isCurrentMonth ? "text-gray-700 hover:bg-rose-50" : "text-gray-400 hover:bg-rose-50/50 bg-gray-50/30";
                                 if (status.isPeriod) {
-                                    bgStyle = "bg-red-500 text-white font-black shadow-sm shadow-red-200";
+                                    bgStyle = isCurrentMonth
+                                        ? "bg-red-500 text-white font-black shadow-sm shadow-red-200"
+                                        : "bg-red-400/80 text-white font-black shadow-sm";
                                 } else if (status.isPredicted) {
-                                    bgStyle = "bg-rose-50 text-rose-700 border-2 border-dashed border-rose-400";
+                                    bgStyle = isCurrentMonth
+                                        ? "bg-rose-50 text-rose-700 border-2 border-dashed border-rose-400"
+                                        : "bg-rose-50/40 text-rose-300 border-2 border-dashed border-rose-300";
                                 } else if (status.isOvulationDay) {
-                                    bgStyle = "bg-[#460b99] text-white font-black shadow-sm shadow-purple-200";
+                                    bgStyle = isCurrentMonth
+                                        ? "bg-[#460b99] text-white font-black shadow-sm shadow-purple-200"
+                                        : "bg-[#460b99]/80 text-white font-black shadow-sm";
                                 } else if (status.isOvulationWindow) {
-                                    bgStyle = "bg-purple-100 text-purple-700";
+                                    bgStyle = isCurrentMonth
+                                        ? "bg-purple-100 text-purple-700"
+                                        : "bg-purple-50 text-purple-300";
                                 }
 
                                 return (
                                     <button
                                         key={dateStr}
                                         type="button"
-                                        disabled={isInitialLoading}
                                         onMouseDown={() => handleCellMouseDown(dateStr)}
                                         onMouseEnter={() => handleCellMouseEnter(dateStr)}
                                         onClick={() => {
@@ -2192,7 +2193,9 @@
                                         }`}
                                     >
                                         <span className={`text-xs font-bold mt-0.5 flex items-center gap-0.5 ${
-                                            isTodayDate && !status.isPeriod && !status.isOvulationDay ? 'text-red-600 font-black' : ''
+                                            isTodayDate && !status.isPeriod && !status.isOvulationDay
+                                                ? 'text-red-600 font-black'
+                                                : (!isCurrentMonth && !status.isPeriod && !status.isOvulationDay ? 'text-gray-400' : '')
                                         }`}>
                                             {dayNum}
                                         </span>
@@ -2262,9 +2265,9 @@
                             <button
                                 type="button"
                                 onClick={handlePeriodClick}
-                                disabled={isInitialLoading || sortedSelectedDates.length === 0 || (!isAllSelectedInPeriod && sortedSelectedDates.length > 1 && !isConsecutive)}
+                                disabled={sortedSelectedDates.length === 0 || (!isAllSelectedInPeriod && sortedSelectedDates.length > 1 && !isConsecutive)}
                                 className={`py-3.5 rounded-2xl text-xs sm:text-sm font-black transition-all shadow-sm flex items-center justify-center gap-1.5 ${
-                                    isInitialLoading || sortedSelectedDates.length === 0 || (!isAllSelectedInPeriod && sortedSelectedDates.length > 1 && !isConsecutive)
+                                    sortedSelectedDates.length === 0 || (!isAllSelectedInPeriod && sortedSelectedDates.length > 1 && !isConsecutive)
                                         ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
                                         : isAllSelectedInPeriod
                                             ? 'bg-rose-100 text-red-600 hover:bg-rose-200 active:scale-95 border border-red-300'
@@ -2277,9 +2280,9 @@
                             <button
                                 type="button"
                                 onClick={handleDeleteSelected}
-                                disabled={isInitialLoading || !hasAnyDeletableContent}
+                                disabled={!hasAnyDeletableContent}
                                 className={`py-3.5 rounded-2xl text-xs sm:text-sm font-black transition-all shadow-sm flex items-center justify-center gap-1.5 ${
-                                    isInitialLoading || !hasAnyDeletableContent
+                                    !hasAnyDeletableContent
                                         ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
                                         : 'bg-red-50 hover:bg-red-100 text-red-600 active:scale-95'
                                 }`}
@@ -2293,9 +2296,9 @@
                                     setSelectedDates([]);
                                     setNonConsecutiveNotice(false);
                                 }}
-                                disabled={isInitialLoading || sortedSelectedDates.length === 0}
+                                disabled={sortedSelectedDates.length === 0}
                                 className={`py-3.5 rounded-2xl text-xs sm:text-sm font-black transition-all shadow-sm flex items-center justify-center gap-1.5 ${
-                                    isInitialLoading || sortedSelectedDates.length === 0
+                                    sortedSelectedDates.length === 0
                                         ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
                                         : 'bg-gray-100 hover:bg-gray-200 text-gray-600 active:scale-95'
                                 }`}
@@ -2312,10 +2315,10 @@
                                     <button
                                         key={item.id}
                                         type="button"
-                                        disabled={isInitialLoading || sortedSelectedDates.length === 0}
+                                        disabled={sortedSelectedDates.length === 0}
                                         onClick={() => toggleNoteIconBatch(item.id)}
                                         className={`p-4 rounded-2xl border text-center transition-all flex flex-col items-center gap-1.5 ${
-                                            isInitialLoading || sortedSelectedDates.length === 0
+                                            sortedSelectedDates.length === 0
                                                 ? 'bg-gray-50 border-gray-50 text-gray-300 opacity-60 cursor-not-allowed'
                                                 : isChecked
                                                     ? 'bg-rose-100 border-rose-400 text-rose-800 font-bold shadow-sm active:scale-90'
@@ -2335,13 +2338,13 @@
                             </div>
                             <textarea
                                 rows="2"
-                                placeholder={isInitialLoading ? "正在載入雲端資料..." : (sortedSelectedDates.length === 0 ? "請先點選日期以記錄備忘..." : "寫下身體狀況或備忘...")}
-                                disabled={isInitialLoading || sortedSelectedDates.length === 0}
+                                placeholder={sortedSelectedDates.length === 0 ? "請先點選日期以記錄備忘..." : "寫下身體狀況或備忘..."}
+                                disabled={sortedSelectedDates.length === 0}
                                 value={primaryDateStr ? (notes[primaryDateStr]?.note || "") : ""}
                                 onChange={(e) => updateNoteTextBatch(e.target.value)}
                                 onBlur={() => saveToCloud(periods, notes)}
                                 className={`w-full bg-rose-50/40 border border-rose-100 rounded-2xl p-3 text-sm text-gray-700 outline-none focus:border-rose-400 focus:bg-white transition-all resize-none ${
-                                    isInitialLoading || sortedSelectedDates.length === 0 ? 'opacity-60 cursor-not-allowed' : ''
+                                    sortedSelectedDates.length === 0 ? 'opacity-60 cursor-not-allowed' : ''
                                 }`}
                             ></textarea>
                         </div>
