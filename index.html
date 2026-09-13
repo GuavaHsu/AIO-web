@@ -1106,6 +1106,7 @@
             // 雲端同步狀態: 'idle' | 'loading' | 'saving' | 'synced' | 'error'
             const [cloudStatus, setCloudStatus] = React.useState('idle');
             const [lastCloudSyncTime, setLastCloudSyncTime] = React.useState(null);
+            const [syncMergeNotice, setSyncMergeNotice] = React.useState(null);
 
             const [backupNotice, setBackupNotice] = React.useState(null);
             const [showRestoreModal, setShowRestoreModal] = React.useState(false);
@@ -1148,89 +1149,8 @@
             React.useEffect(() => { safeStorage.setItem('period_ranges_v4', JSON.stringify(periods)); }, [periods]);
             React.useEffect(() => { safeStorage.setItem('period_notes_v4', JSON.stringify(notes)); }, [notes]);
 
-            // --- 雲端試算表讀取 (GET JSONP) ---
-            const fetchFromCloud = React.useCallback(() => {
-                if (!apiUrl || !apiToken) return;
-                setCloudStatus('loading');
-
-                const callbackName = 'onGetPeriodResult_' + Date.now();
-                let isHandled = false;
-
-                window[callbackName] = (res) => {
-                    isHandled = true;
-                    if (res && res.status === 'success' && res.data) {
-                        const cloudData = res.data;
-                        if (Array.isArray(cloudData.periods)) {
-                            setPeriods(cloudData.periods);
-                        }
-                        if (cloudData.notes && typeof cloudData.notes === 'object') {
-                            setNotes(cloudData.notes);
-                        }
-                        if (cloudData.settings) {
-                            if (typeof cloudData.settings.useDefaultParams === 'boolean') setUseDefaultParams(cloudData.settings.useDefaultParams);
-                            if (cloudData.settings.cycleLength) setCycleLength(Number(cloudData.settings.cycleLength));
-                            if (cloudData.settings.periodDuration) setPeriodDuration(Number(cloudData.settings.periodDuration));
-                            if (typeof cloudData.settings.showFertileWindow === 'boolean') setShowFertileWindow(cloudData.settings.showFertileWindow);
-                        }
-                        setCloudStatus('synced');
-                        if (res.updatedAt) setLastCloudSyncTime(res.updatedAt);
-                    } else {
-                        setCloudStatus('synced'); // 雲端尚無資料，以本機為準
-                    }
-                    delete window[callbackName];
-                    const s = document.getElementById(callbackName);
-                    if (s) s.remove();
-                };
-
-                const script = document.createElement('script');
-                script.id = callbackName;
-                script.src = `${apiUrl}?action=getPeriodData&id=${encodeURIComponent(apiToken)}&api_token=${encodeURIComponent(apiToken)}&callback=${callbackName}&_t=${Date.now()}`;
-                script.onerror = () => {
-                    if (!isHandled) {
-                        setCloudStatus('error');
-                        if (window[callbackName]) delete window[callbackName];
-                        const s = document.getElementById(callbackName);
-                        if (s) s.remove();
-                    }
-                };
-                document.body.appendChild(script);
-            }, [apiUrl, apiToken]);
-
-            // 首次載入時自動從雲端拉取
-            React.useEffect(() => {
-                fetchFromCloud();
-            }, [fetchFromCloud]);
-
-            // --- 雲端試算表儲存 (POST) ---
-            const saveToCloud = React.useCallback((updatedPeriods, updatedNotes, updatedSettings) => {
-                if (!apiUrl || !apiToken) return;
-                setCloudStatus('saving');
-
-                const payload = {
-                    type: 'period',
-                    api_token: apiToken,
-                    periods: updatedPeriods !== undefined ? updatedPeriods : periods,
-                    notes: updatedNotes !== undefined ? updatedNotes : notes,
-                    settings: updatedSettings !== undefined ? updatedSettings : {
-                        useDefaultParams,
-                        cycleLength,
-                        periodDuration,
-                        showFertileWindow
-                    }
-                };
-
-                fetch(apiUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload), keepalive: true })
-                    .then(() => {
-                        setCloudStatus('synced');
-                        const now = new Intl.DateTimeFormat('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
-                        setLastCloudSyncTime(now);
-                    })
-                    .catch(() => {
-                        setCloudStatus('error');
-                    });
-            }, [apiUrl, apiToken, periods, notes, useDefaultParams, cycleLength, periodDuration, showFertileWindow]);
-
-            const cleanAndMergePeriods = (list) => {
+            // --- 經期區間清理與自動鄰接合併演算法 ---
+            const cleanAndMergePeriods = React.useCallback((list) => {
                 if (!list || list.length === 0) return [];
                 const sorted = [...list]
                     .map(p => ({
@@ -1258,7 +1178,151 @@
                     }
                 }
                 return merged;
+            }, []);
+
+            // --- 智慧防衝突合併輔助函式 ---
+            const mergeNotesSmart = (localN, cloudN) => {
+                const allKeys = new Set([...Object.keys(localN || {}), ...Object.keys(cloudN || {})]);
+                const res = {};
+                for (const d of allKeys) {
+                    const l = localN?.[d];
+                    const c = cloudN?.[d];
+                    if (!l) { res[d] = c; continue; }
+                    if (!c) { res[d] = l; continue; }
+                    // 兩端當日皆有紀錄：圖示取聯集，文字智慧串接
+                    const mergedIcons = Array.from(new Set([...(l.icons || []), ...(c.icons || [])]));
+                    let mergedText = "";
+                    if (l.note && c.note) {
+                        if (l.note === c.note) mergedText = l.note;
+                        else if (l.note.includes(c.note)) mergedText = l.note;
+                        else if (c.note.includes(l.note)) mergedText = c.note;
+                        else mergedText = `${l.note} / ${c.note}`;
+                    } else {
+                        mergedText = l.note || c.note || "";
+                    }
+                    res[d] = { icons: mergedIcons, note: mergedText };
+                }
+                return res;
             };
+
+            const mergePeriodsSmart = React.useCallback((localP, cloudP) => {
+                return cleanAndMergePeriods([...(localP || []), ...(cloudP || [])]);
+            }, [cleanAndMergePeriods]);
+
+            // --- 雲端試算表儲存 (POST) ---
+            const saveToCloud = React.useCallback((updatedPeriods, updatedNotes, updatedSettings) => {
+                if (!apiUrl || !apiToken) return;
+                setCloudStatus('saving');
+
+                const nowTs = Date.now();
+                safeStorage.setItem('period_local_updated_at', String(nowTs));
+
+                const payload = {
+                    type: 'period',
+                    api_token: apiToken,
+                    updatedAt: nowTs,
+                    periods: updatedPeriods !== undefined ? updatedPeriods : periods,
+                    notes: updatedNotes !== undefined ? updatedNotes : notes,
+                    settings: updatedSettings !== undefined ? updatedSettings : {
+                        useDefaultParams,
+                        cycleLength,
+                        periodDuration,
+                        showFertileWindow
+                    }
+                };
+
+                fetch(apiUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload), keepalive: true })
+                    .then(() => {
+                        setCloudStatus('synced');
+                        const now = new Intl.DateTimeFormat('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
+                        setLastCloudSyncTime(now);
+                    })
+                    .catch(() => {
+                        setCloudStatus('error');
+                    });
+            }, [apiUrl, apiToken, periods, notes, useDefaultParams, cycleLength, periodDuration, showFertileWindow]);
+
+            // --- 雲端試算表讀取與防衝突智慧合併 (GET JSONP) ---
+            const fetchFromCloud = React.useCallback(() => {
+                if (!apiUrl || !apiToken) return;
+                setCloudStatus('loading');
+
+                const callbackName = 'onGetPeriodResult_' + Date.now();
+                let isHandled = false;
+
+                window[callbackName] = (res) => {
+                    isHandled = true;
+                    if (res && res.status === 'success' && res.data) {
+                        const cloudData = res.data;
+                        const cloudTimestamp = Number(cloudData.updatedAt || (res.updatedAt ? new Date(res.updatedAt).getTime() : 0));
+                        const localTimestamp = Number(safeStorage.getItem('period_local_updated_at') || 0);
+
+                        // 讀取當前最新本地記錄
+                        const localSavedP = safeStorage.getItem('period_ranges_v4');
+                        const currentLocalP = localSavedP ? JSON.parse(localSavedP) : periods;
+                        const localSavedN = safeStorage.getItem('period_notes_v4');
+                        const currentLocalN = localSavedN ? JSON.parse(localSavedN) : notes;
+
+                        // 執行雙向無損智慧合併 (Smart Merge)
+                        const mergedPeriods = mergePeriodsSmart(currentLocalP, cloudData.periods || []);
+                        const mergedNotes = mergeNotesSmart(currentLocalN, cloudData.notes || {});
+
+                        setPeriods(mergedPeriods);
+                        setNotes(mergedNotes);
+
+                        // 設定參數：若雲端時間戳記較新或相等，優先採用雲端設定
+                        if (cloudData.settings && cloudTimestamp >= localTimestamp) {
+                            if (typeof cloudData.settings.useDefaultParams === 'boolean') setUseDefaultParams(cloudData.settings.useDefaultParams);
+                            if (cloudData.settings.cycleLength) setCycleLength(Number(cloudData.settings.cycleLength));
+                            if (cloudData.settings.periodDuration) setPeriodDuration(Number(cloudData.settings.periodDuration));
+                            if (typeof cloudData.settings.showFertileWindow === 'boolean') setShowFertileWindow(cloudData.settings.showFertileWindow);
+                        }
+
+                        setCloudStatus('synced');
+                        if (res.updatedAt) setLastCloudSyncTime(res.updatedAt);
+
+                        // 比對：若合併後包含本機的新資料，自動將合併後的完整版本推回雲端
+                        const isDifferentFromCloud = 
+                            JSON.stringify(mergedPeriods) !== JSON.stringify(cloudData.periods || []) ||
+                            JSON.stringify(mergedNotes) !== JSON.stringify(cloudData.notes || {});
+
+                        if (isDifferentFromCloud) {
+                            saveToCloud(mergedPeriods, mergedNotes);
+                            setSyncMergeNotice("已自動整合本地與雲端最新紀錄");
+                            setTimeout(() => setSyncMergeNotice(null), 3500);
+                        }
+                    } else if (res && res.status === 'success' && !res.data) {
+                        // 雲端尚無資料，自動將本機資料推上雲端初始化
+                        if (periods.length > 0 || Object.keys(notes).length > 0) {
+                            saveToCloud(periods, notes);
+                        }
+                        setCloudStatus('synced');
+                    } else {
+                        setCloudStatus('synced');
+                    }
+                    delete window[callbackName];
+                    const s = document.getElementById(callbackName);
+                    if (s) s.remove();
+                };
+
+                const script = document.createElement('script');
+                script.id = callbackName;
+                script.src = `${apiUrl}?action=getPeriodData&id=${encodeURIComponent(apiToken)}&api_token=${encodeURIComponent(apiToken)}&callback=${callbackName}&_t=${Date.now()}`;
+                script.onerror = () => {
+                    if (!isHandled) {
+                        setCloudStatus('error');
+                        if (window[callbackName]) delete window[callbackName];
+                        const s = document.getElementById(callbackName);
+                        if (s) s.remove();
+                    }
+                };
+                document.body.appendChild(script);
+            }, [apiUrl, apiToken, periods, notes, mergePeriodsSmart, saveToCloud]);
+
+            // 首次載入時自動從雲端拉取
+            React.useEffect(() => {
+                fetchFromCloud();
+            }, [fetchFromCloud]);
 
             const stats = React.useMemo(() => {
                 if (periods.length === 0) {
@@ -1362,6 +1426,9 @@
                 return periods.find(p => dateStr >= p.start && dateStr <= p.end) || null;
             };
 
+            // 判斷所選日期是否全部皆為經期（供反點解除經期判定）
+            const isAllSelectedInPeriod = sortedSelectedDates.length > 0 && sortedSelectedDates.every(d => getPeriodAtDate(d) !== null);
+
             const hasAnyDeletableContent = sortedSelectedDates.some(d => {
                 const hasPeriod = getPeriodAtDate(d) !== null;
                 const dayNote = notes[d];
@@ -1371,23 +1438,25 @@
             });
 
             const applyMerge = (target, targetPeriod, refDate) => {
+                let updated;
                 if (target === 'before') {
-                    const updated = periods.map(p => {
+                    updated = periods.map(p => {
                         if (p.id === targetPeriod.id) {
                             return { ...p, end: refDate };
                         }
                         return p;
                     });
-                    setPeriods(cleanAndMergePeriods(updated));
                 } else if (target === 'after') {
-                    const updated = periods.map(p => {
+                    updated = periods.map(p => {
                         if (p.id === targetPeriod.id) {
                             return { ...p, start: refDate };
                         }
                         return p;
                     });
-                    setPeriods(cleanAndMergePeriods(updated));
                 }
+                const nextPeriods = cleanAndMergePeriods(updated);
+                setPeriods(nextPeriods);
+                saveToCloud(nextPeriods, notes);
                 setMergePrompt(null);
                 setSelectedDates([]);
             };
@@ -1426,8 +1495,54 @@
                 setNonConsecutiveNotice(false);
             };
 
+            // 僅從經期區間中扣除指定日期，保留備註與圖示
+            const removeDatesFromPeriods = (datesToRemove) => {
+                let currentPeriods = [...periods];
+                for (const dateStr of datesToRemove) {
+                    const nextPeriods = [];
+                    for (const p of currentPeriods) {
+                        if (dateStr < p.start || dateStr > p.end) {
+                            nextPeriods.push(p);
+                            continue;
+                        }
+                        if (p.start === p.end && p.start === dateStr) {
+                            continue;
+                        }
+                        if (p.start === dateStr) {
+                            nextPeriods.push({ ...p, start: addDays(dateStr, 1) });
+                        } else if (p.end === dateStr) {
+                            nextPeriods.push({ ...p, end: addDays(dateStr, -1) });
+                        } else {
+                            nextPeriods.push({
+                                id: Date.now().toString() + Math.random().toString().slice(2, 6) + '_a',
+                                start: p.start,
+                                end: addDays(dateStr, -1),
+                                isClosed: p.isClosed
+                            });
+                            nextPeriods.push({
+                                id: Date.now().toString() + Math.random().toString().slice(2, 6) + '_b',
+                                start: addDays(dateStr, 1),
+                                end: p.end,
+                                isClosed: p.isClosed
+                            });
+                        }
+                    }
+                    currentPeriods = nextPeriods;
+                }
+                const nextMerged = cleanAndMergePeriods(currentPeriods);
+                setPeriods(nextMerged);
+                saveToCloud(nextMerged, notes);
+                setSelectedDates([]);
+            };
+
             const handlePeriodClick = () => {
                 if (sortedSelectedDates.length === 0) return;
+
+                // 若所選取的日期本來就是經期 -> 反點：單純解除/扣除經期，保留所有文字備忘與症狀圖示！
+                if (isAllSelectedInPeriod) {
+                    removeDatesFromPeriods(sortedSelectedDates);
+                    return;
+                }
 
                 if (sortedSelectedDates.length > 1 && !isConsecutive) {
                     setNonConsecutiveNotice(true);
@@ -1453,10 +1568,6 @@
                 }
 
                 const singleDate = sortedSelectedDates[0];
-                if (getPeriodAtDate(singleDate)) {
-                    setSelectedDates([]);
-                    return;
-                }
 
                 const beforePeriods = periods
                     .filter(p => p.end < singleDate && p.end >= addDays(singleDate, -3))
@@ -1577,7 +1688,6 @@
                     nextNotes[d] = { ...cur, note: text };
                 });
                 setNotes(nextNotes);
-                saveToCloud(periods, nextNotes);
             };
 
             const handleExportBackup = () => {
@@ -1950,8 +2060,12 @@
                                                     </div>
                                                 </div>
                                                 <button
-                                                    onClick={() => setPeriods(prev => prev.filter(p => p.id !== item.id))}
-                                                    className="p-2 text-gray-400 hover:text-red-500 rounded-lg active:scale-95"
+                                                    onClick={() => {
+                                                        const next = periods.filter(p => p.id !== item.id);
+                                                        setPeriods(next);
+                                                        saveToCloud(next, notes);
+                                                    }}
+                                                    className="p-2 text-gray-400 hover:text-red-500 rounded-lg active:scale-95 cursor-pointer"
                                                     title="刪除此筆記錄"
                                                 >
                                                     <Icon name="Trash" className="w-3.5 h-3.5" />
@@ -1961,6 +2075,46 @@
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    )}
+
+                    {/* 未綁定金鑰提示列 (支援在新裝置一鍵綁定) */}
+                    {!apiToken && (
+                        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-2xl text-amber-900 text-xs font-bold flex items-center justify-between animate-in fade-in">
+                            <div className="flex items-center gap-1.5">
+                                <span>⚠️</span>
+                                <span>未驗證金鑰，目前為單機離線模式</span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const key = prompt("請輸入金鑰 (ID) 以同步雲端資料：");
+                                    if (key && key.trim()) {
+                                        safeStorage.setItem('api_token_id', key.trim());
+                                        window.location.reload();
+                                    }
+                                }}
+                                className="px-2.5 py-1 bg-amber-200 hover:bg-amber-300 text-amber-950 rounded-lg font-black text-[11px] active:scale-95 transition-all cursor-pointer"
+                            >
+                                輸入金鑰
+                            </button>
+                        </div>
+                    )}
+
+                    {/* 自動合併提示條 */}
+                    {syncMergeNotice && (
+                        <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs font-bold flex items-center justify-between animate-in fade-in">
+                            <div className="flex items-center gap-1.5">
+                                <span>✨</span>
+                                <span>{syncMergeNotice}</span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSyncMergeNotice(null)}
+                                className="text-emerald-500 hover:text-emerald-700 font-black text-xs"
+                            >
+                                ✕
+                            </button>
                         </div>
                     )}
 
@@ -2102,15 +2256,17 @@
                             <button
                                 type="button"
                                 onClick={handlePeriodClick}
-                                disabled={sortedSelectedDates.length === 0 || (sortedSelectedDates.length > 1 && !isConsecutive)}
+                                disabled={sortedSelectedDates.length === 0 || (!isAllSelectedInPeriod && sortedSelectedDates.length > 1 && !isConsecutive)}
                                 className={`py-3.5 rounded-2xl text-xs sm:text-sm font-black transition-all shadow-sm flex items-center justify-center gap-1.5 ${
-                                    sortedSelectedDates.length === 0 || (sortedSelectedDates.length > 1 && !isConsecutive)
+                                    sortedSelectedDates.length === 0 || (!isAllSelectedInPeriod && sortedSelectedDates.length > 1 && !isConsecutive)
                                         ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
-                                        : 'bg-red-500 hover:bg-red-600 text-white active:scale-95 shadow-red-200'
+                                        : isAllSelectedInPeriod
+                                            ? 'bg-rose-100 text-red-600 hover:bg-rose-200 active:scale-95 border border-red-300'
+                                            : 'bg-red-500 hover:bg-red-600 text-white active:scale-95 shadow-red-200'
                                 }`}
                             >
-                                <Icon name="DropletFilled" className="w-4 h-4" />
-                                <span>經期</span>
+                                <Icon name="DropletFilled" className={`w-4 h-4 ${isAllSelectedInPeriod ? 'text-red-500' : ''}`} />
+                                <span>{isAllSelectedInPeriod ? '取消經期' : '經期'}</span>
                             </button>
                             <button
                                 type="button"
@@ -2177,6 +2333,7 @@
                                 disabled={sortedSelectedDates.length === 0}
                                 value={primaryDateStr ? (notes[primaryDateStr]?.note || "") : ""}
                                 onChange={(e) => updateNoteTextBatch(e.target.value)}
+                                onBlur={() => saveToCloud(periods, notes)}
                                 className={`w-full bg-rose-50/40 border border-rose-100 rounded-2xl p-3 text-sm text-gray-700 outline-none focus:border-rose-400 focus:bg-white transition-all resize-none ${
                                     sortedSelectedDates.length === 0 ? 'opacity-60 cursor-not-allowed' : ''
                                 }`}
