@@ -4,34 +4,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>養成記帳好習慣!!</title>
+    <title>生活好習慣 AIO</title>
     <link rel="manifest" href="./manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="養成記帳好習慣!!">
+    <meta name="apple-mobile-web-app-title" content="生活好習慣">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    
-    <!-- 改用穩定的 cdnjs 來源 -->
+
+    <!-- 載入 React 18, ReactDOM, Babel 與 Tailwind CSS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    
+
     <style>
         /* --- 動畫效果 --- */
         @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
         @keyframes bubble { 0% { transform: translateY(100vh) scale(0); opacity: 0; } 50% { opacity: 0.4; } 100% { transform: translateY(-10vh) scale(1.2); opacity: 0; } }
         @keyframes slideDown { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes slideInLeft { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes slideInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+        .slide-left { animation: slideInLeft 0.22s ease-out forwards; }
+        .slide-right { animation: slideInRight 0.22s ease-out forwards; }
 
         /* --- 全域主題變換與樣式 --- */
         html { height: 100%; }
         body {
             margin: 0; padding: 0; overflow-x: hidden; overflow-y: auto;
             min-height: 100%; font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif;
-            -webkit-tap-highlight-color: transparent; transition: background 0.5s ease;
+            -webkit-tap-highlight-color: transparent; transition: background 0.4s ease;
         }
         body.theme-expense { background-color: #FCE4EC; background-image: none; }
         body.theme-wine { background: linear-gradient(to right, #fffbeb 0%, #fef3c7 50%, #fde68a 100%) fixed; background-size: cover; }
+        body.theme-period { background-color: #FFF1F2; background-image: none; }
         .bubble { position: fixed; bottom: -30px; background: rgba(245, 158, 11, 0.25); border-radius: 50%; animation: bubble linear infinite; z-index: 0; pointer-events: none; }
         .glass-card { background: rgba(255, 255, 255, 0.65); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.4); }
         .drink-card, .user-card { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
@@ -46,14 +51,9 @@
 </head>
 
 <body>
-    <!-- 乾淨的 root 掛載點 -->
     <div id="root"></div>
 
-    <!-- 加上 data-presets="react" 強迫 Babel 乖乖聽話，不准塞 import -->
     <script type="text/babel" data-presets="react">
-        console.log("=== V8 修復月份選擇器版載入成功 ===");
-
-        // --- 整合的圖示元件 ---
         const Icon = ({ name, className = "w-4 h-4" }) => {
             const icons = {
                 Calendar: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>),
@@ -69,7 +69,17 @@
                 History: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>),
                 Plus: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>),
                 Minus: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="5" y1="12" x2="19" y2="12"></line></svg>),
-                Check: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="20 6 9 17 4 12"></polyline></svg>)
+                Check: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="20 6 9 17 4 12"></polyline></svg>),
+                Heart: (<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" className={className}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>),
+                DropletFilled: (<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" className={className}><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path></svg>),
+                Settings: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>),
+                BarChart: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>),
+                Sparkles: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path></svg>),
+                X: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>),
+                Download: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>),
+                Upload: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>),
+                Copy: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>),
+                Trash: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>)
             };
             return icons[name] || null;
         };
@@ -123,7 +133,7 @@
             const [viewYear, setViewYear] = React.useState(dateObj.getFullYear());
             const currentMonth = dateObj.getMonth();
             const prevYear = () => setViewYear(prev => prev - 1);
-            const nextYear = () => setViewYear(prev => prev + 1); // <--- 就是這裡！
+            const nextYear = () => setViewYear(prev => prev + 1);
             const isSelected = (m) => m === currentMonth && viewYear === dateObj.getFullYear();
             const isThisMonth = (m) => {
                 const today = new Date();
@@ -138,7 +148,6 @@
                         <div className="bg-pink-500 p-4 text-white flex justify-between items-center px-6">
                             <button type="button" onClick={prevYear} className="p-2 hover:bg-white/10 rounded-full cursor-pointer"><Icon name="ChevronLeft" className="w-5 h-5" /></button>
                             <h3 className="text-lg font-bold">{viewYear}年</h3>
-                            {/* 修復了這裡的 onClick 事件，原本錯寫成 nextMonth */}
                             <button type="button" onClick={nextYear} className="p-2 hover:bg-white/10 rounded-full cursor-pointer"><Icon name="ChevronRight" className="w-5 h-5" /></button>
                         </div>
                         <div className="p-6">
@@ -330,7 +339,6 @@
             const [status, setStatus] = React.useState('idle');
             const [showCalendar, setShowCalendar] = React.useState(false);
             const [view, setView] = React.useState('input');
-
             const apiUrl = 'https://script.google.com/macros/s/AKfycbxyB9Z2sJHxJ3533aqEYnCxMecQShD5nUBBsfYsJpgeM2aPOXTMKU44gwM8IS7M9eYU/exec';
 
             const getTodayString = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; };
@@ -375,7 +383,6 @@
                     });
                 } else {
                     window.history.replaceState({ view: 'input' }, '');
-
                     const handlePopState = (event) => {
                         if (event.state && event.state.view) {
                             setView(event.state.view);
@@ -384,9 +391,7 @@
                         }
                     };
                     window.addEventListener('popstate', handlePopState);
-                    return () => {
-                        window.removeEventListener('popstate', handlePopState);
-                    };
+                    return () => window.removeEventListener('popstate', handlePopState);
                 }
             }, []);
 
@@ -408,7 +413,7 @@
                     user: formData.user,
                     api_token: apiToken
                 };
-                
+
                 fetch(apiUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload), keepalive: true })
                     .then(() => {
                         setStatus('success');
@@ -588,7 +593,6 @@
             );
         };
 
-        // --- 微醺時光月份選擇器 (琥珀色) ---
         const CustomWineMonthPicker = ({ selectedDate, onSelect, onClose }) => {
             const dateObj = new Date(selectedDate);
             const [viewYear, setViewYear] = React.useState(dateObj.getFullYear());
@@ -639,7 +643,6 @@
             );
         };
 
-        // --- 微醺時光歷史統計頁面 (琥珀色) ---
         const WineReportPage = ({ setView, apiUrl, apiToken }) => {
             const getTodayString = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; };
             const [selectedDate, setSelectedDate] = React.useState(getTodayString());
@@ -675,8 +678,6 @@
             };
 
             const filteredDataRows = data ? data.filter(row => row && row[3]) : [];
-
-            // 優先從備註判定成員，若備註沒提到任何人，則依據原本是誰喝酒欄位
             const isUserRow = (row, userName, otherName) => {
                 const userCol = row[4] || "";
                 const noteCol = row[8] || "";
@@ -685,11 +686,9 @@
                 return userCol === userName;
             };
 
-            // 分別過濾出庭與珊的資料列
             const tingRows = filteredDataRows.filter(row => isUserRow(row, "庭", "珊"));
             const shanRows = filteredDataRows.filter(row => isUserRow(row, "珊", "庭"));
 
-            // 分別按酒類累加杯數
             const tingCups = tingRows.reduce((acc, row) => {
                 const cat = row[3];
                 const cup = Number(row[4]) || 0;
@@ -705,7 +704,6 @@
             }, {});
 
             const uniqueCategories = data ? Array.from(new Set(filteredDataRows.map(row => row[3]))) : [];
-
             const filteredRows = data
                 ? filteredDataRows.filter(row => filterCategory === '全部' || row[3] === filterCategory)
                     .sort((a, b) => Number(b[2]) - Number(a[2]))
@@ -730,8 +728,6 @@
                             <div className="space-y-4">
                                 <div className="glass-card rounded-[2.5rem] p-6 shadow-sm space-y-6">
                                     <h3 className="font-black text-amber-900 mb-2 text-center text-xl tracking-wider">當月開心紀錄</h3>
-
-                                    {/* 庭的紀錄 */}
                                     <div className="p-4 rounded-3xl bg-amber-50/40 border border-amber-900/5 space-y-2">
                                         <h4 className="font-black text-amber-950 text-base border-b border-amber-900/10 pb-1 flex items-center">
                                             <span className="mr-1">庭的紀錄</span>
@@ -750,7 +746,6 @@
                                         </div>
                                     </div>
 
-                                    {/* 珊的紀錄 */}
                                     <div className="p-4 rounded-3xl bg-amber-50/40 border border-amber-900/5 space-y-2">
                                         <h4 className="font-black text-amber-950 text-base border-b border-amber-900/10 pb-1 flex items-center">
                                             <span className="mr-1">珊的紀錄</span>
@@ -766,7 +761,6 @@
                                                     </div>
                                                 ))
                                             )}
-
                                         </div>
                                     </div>
                                 </div>
@@ -837,7 +831,6 @@
 
         const WineApp = ({ apiToken }) => {
             const apiUrl = 'https://script.google.com/macros/s/AKfycbylZOr-mY4m822xXNBZgp7uAaeJ_6eT-ZxwZYc9YGNdweiyz5x7l0U8ekSaY9_9MVrP/exec';
-
             const getTodayString = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; };
             const [fullDate, setFullDate] = React.useState(getTodayString());
             const [showCalendar, setShowCalendar] = React.useState(false);
@@ -892,7 +885,6 @@
                     });
                 } else {
                     window.history.replaceState({ view: 'input' }, '');
-
                     const handlePopState = (event) => {
                         if (event.state && event.state.view) {
                             setView(event.state.view);
@@ -901,9 +893,7 @@
                         }
                     };
                     window.addEventListener('popstate', handlePopState);
-                    return () => {
-                        window.removeEventListener('popstate', handlePopState);
-                    };
+                    return () => window.removeEventListener('popstate', handlePopState);
                 }
             }, []);
 
@@ -1029,18 +1019,1213 @@
         };
 
         // ==========================================
+        //         生理期日誌元件 (PeriodApp)
+        // ==========================================
+
+        const safeStorage = {
+            getItem: (key) => {
+                try {
+                    return localStorage.getItem(key);
+                } catch (e) {
+                    console.warn("Storage access restricted, fallback to memStore.", e);
+                    return window._memStore?.[key] || null;
+                }
+            },
+            setItem: (key, val) => {
+                try {
+                    localStorage.setItem(key, val);
+                } catch (e) {
+                    if (!window._memStore) window._memStore = {};
+                    window._memStore[key] = val;
+                }
+            },
+            removeItem: (key) => {
+                try {
+                    localStorage.removeItem(key);
+                } catch (e) {
+                    if (window._memStore) delete window._memStore[key];
+                }
+            }
+        };
+
+        const NOTE_ICONS = [
+            { id: "pain", emoji: "😣", label: "經痛" },
+            { id: "love", emoji: "🍱", label: "親密" },
+            { id: "pill", emoji: "💊", label: "吃藥" }
+        ];
+
+        const toDateStr = (d) => {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+
+        const parseDateStr = (str) => {
+            const [y, m, d] = str.split('-').map(Number);
+            return new Date(y, m - 1, d);
+        };
+
+        const addDays = (dateStr, days) => {
+            const d = parseDateStr(dateStr);
+            d.setDate(d.getDate() + days);
+            return toDateStr(d);
+        };
+
+        const diffDays = (startStr, endStr) => {
+            const d1 = parseDateStr(startStr);
+            const d2 = parseDateStr(endStr);
+            return Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+        };
+
+        const PeriodApp = () => {
+            const [useDefaultParams, setUseDefaultParams] = React.useState(() => {
+                const saved = safeStorage.getItem('period_use_default_v4');
+                return saved !== null ? JSON.parse(saved) : true;
+            });
+            const [cycleLength, setCycleLength] = React.useState(() => {
+                const saved = safeStorage.getItem('period_cycle_len_v4');
+                return saved ? Number(saved) : 28;
+            });
+            const [periodDuration, setPeriodDuration] = React.useState(() => {
+                const saved = safeStorage.getItem('period_duration_v4');
+                return saved ? Number(saved) : 6;
+            });
+            const [showFertileWindow, setShowFertileWindow] = React.useState(() => {
+                const saved = safeStorage.getItem('period_show_fertile_v4');
+                return saved !== null ? JSON.parse(saved) : true;
+            });
+
+            const [showSettings, setShowSettings] = React.useState(false);
+            const [showStats, setShowStats] = React.useState(false);
+            const [mergePrompt, setMergePrompt] = React.useState(null);
+            const [nonConsecutiveNotice, setNonConsecutiveNotice] = React.useState(false);
+
+            const [backupNotice, setBackupNotice] = React.useState(null);
+            const [showRestoreModal, setShowRestoreModal] = React.useState(false);
+            const [restoreText, setRestoreText] = React.useState("");
+            const fileInputRef = React.useRef(null);
+
+            const today = new Date();
+            const [viewDate, setViewDate] = React.useState(new Date(today.getFullYear(), today.getMonth(), 1));
+            const [selectedDates, setSelectedDates] = React.useState([]);
+            const [slideDir, setSlideDir] = React.useState("");
+
+            const isMouseDownRef = React.useRef(false);
+            const dragStartRef = React.useRef(null);
+            const hasDraggedRef = React.useRef(false);
+
+            React.useEffect(() => {
+                const handleGlobalMouseUp = () => {
+                    isMouseDownRef.current = false;
+                    dragStartRef.current = null;
+                };
+                window.addEventListener('mouseup', handleGlobalMouseUp);
+                return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+            }, []);
+
+            const [periods, setPeriods] = React.useState(() => {
+                const saved = safeStorage.getItem('period_ranges_v4');
+                return saved ? JSON.parse(saved) : [];
+            });
+
+            const [notes, setNotes] = React.useState(() => {
+                const saved = safeStorage.getItem('period_notes_v4');
+                return saved ? JSON.parse(saved) : {};
+            });
+
+            React.useEffect(() => {
+                safeStorage.setItem('period_use_default_v4', JSON.stringify(useDefaultParams));
+            }, [useDefaultParams]);
+
+            React.useEffect(() => {
+                safeStorage.setItem('period_cycle_len_v4', String(cycleLength));
+            }, [cycleLength]);
+
+            React.useEffect(() => {
+                safeStorage.setItem('period_duration_v4', String(periodDuration));
+            }, [periodDuration]);
+
+            React.useEffect(() => {
+                safeStorage.setItem('period_show_fertile_v4', JSON.stringify(showFertileWindow));
+            }, [showFertileWindow]);
+
+            React.useEffect(() => {
+                safeStorage.setItem('period_ranges_v4', JSON.stringify(periods));
+            }, [periods]);
+
+            React.useEffect(() => {
+                safeStorage.setItem('period_notes_v4', JSON.stringify(notes));
+            }, [notes]);
+
+            const cleanAndMergePeriods = (list) => {
+                if (!list || list.length === 0) return [];
+                const sorted = [...list]
+                    .map(p => ({
+                        id: p.id || Math.random().toString(),
+                        start: p.start <= p.end ? p.start : p.end,
+                        end: p.start <= p.end ? p.end : p.start,
+                        isClosed: p.isClosed === false ? false : true
+                    }))
+                    .sort((a, b) => a.start.localeCompare(b.start));
+
+                const merged = [];
+                for (const cur of sorted) {
+                    if (merged.length === 0) {
+                        merged.push(cur);
+                    } else {
+                        const prev = merged[merged.length - 1];
+                        if (cur.start <= addDays(prev.end, 1)) {
+                            if (cur.end > prev.end) {
+                                prev.end = cur.end;
+                            }
+                            prev.isClosed = (prev.isClosed === false || cur.isClosed === false) ? false : true;
+                        } else {
+                            merged.push(cur);
+                        }
+                    }
+                }
+                return merged;
+            };
+
+            const stats = React.useMemo(() => {
+                if (periods.length === 0) {
+                    return { avgCycle: null, avgDuration: null, count: 0, history: [] };
+                }
+                const sorted = [...periods].sort((a, b) => a.start.localeCompare(b.start));
+                let totalDuration = 0;
+                const history = [];
+
+                for (let i = 0; i < sorted.length; i++) {
+                    const cur = sorted[i];
+                    const dur = diffDays(cur.start, cur.end) + 1;
+                    totalDuration += dur;
+                    let cycleDays = null;
+                    if (i > 0) {
+                        cycleDays = diffDays(sorted[i - 1].start, cur.start);
+                    }
+                    history.push({
+                        ...cur,
+                        duration: dur,
+                        cycleDays: cycleDays
+                    });
+                }
+
+                const validCycleList = history.map(h => h.cycleDays).filter(d => d !== null);
+                const avgCycle = validCycleList.length > 0
+                    ? Math.round(validCycleList.reduce((a, b) => a + b, 0) / validCycleList.length)
+                    : null;
+                const avgDuration = Math.round(totalDuration / sorted.length);
+
+                return { avgCycle, avgDuration, count: sorted.length, history: history.reverse() };
+            }, [periods]);
+
+            const calculations = React.useMemo(() => {
+                if (periods.length === 0) {
+                    return { predictedPeriod: [], ovulationPeriod: [], ovulationDay: null, nextStart: null, mode: "none" };
+                }
+
+                const sorted = [...periods].sort((a, b) => a.start.localeCompare(b.start));
+                const lastPeriod = sorted[sorted.length - 1];
+
+                let effectiveCycle = Number(cycleLength);
+                let effectiveDuration = Number(periodDuration);
+                let mode = "default";
+
+                if (!useDefaultParams) {
+                    if (stats.avgCycle && stats.avgDuration) {
+                        effectiveCycle = stats.avgCycle;
+                        effectiveDuration = stats.avgDuration;
+                        mode = "history";
+                    } else {
+                        return { predictedPeriod: [], ovulationPeriod: [], ovulationDay: null, nextStart: null, mode: "need_more_data" };
+                    }
+                }
+
+                const nextStart = addDays(lastPeriod.start, effectiveCycle);
+                const predictedPeriod = [];
+                for (let i = 0; i < effectiveDuration; i++) {
+                    predictedPeriod.push(addDays(nextStart, i));
+                }
+
+                const ovulationDay = addDays(nextStart, -14);
+                const ovulationPeriod = [];
+                for (let i = -2; i <= 1; i++) {
+                    ovulationPeriod.push(addDays(ovulationDay, i));
+                }
+
+                return { predictedPeriod, ovulationPeriod, ovulationDay, nextStart, mode };
+            }, [periods, cycleLength, periodDuration, useDefaultParams, stats]);
+
+            const handleDateClick = (dateStr) => {
+                setNonConsecutiveNotice(false);
+                setSelectedDates(prev => {
+                    if (prev.includes(dateStr)) {
+                        if (prev.length > 1) {
+                            return prev.filter(d => d !== dateStr);
+                        }
+                        return prev;
+                    } else {
+                        return [...prev, dateStr].sort();
+                    }
+                });
+            };
+
+            const checkIsConsecutive = (datesArr) => {
+                if (!datesArr || datesArr.length <= 1) return true;
+                const sorted = [...datesArr].sort();
+                for (let i = 0; i < sorted.length - 1; i++) {
+                    if (diffDays(sorted[i], sorted[i + 1]) !== 1) {
+                        return false;
+                    }
+                }
+                return true;
+            };
+
+            const sortedSelectedDates = React.useMemo(() => [...selectedDates].sort(), [selectedDates]);
+            const isConsecutive = React.useMemo(() => checkIsConsecutive(selectedDates), [selectedDates]);
+            const primaryDateStr = sortedSelectedDates[0] || "";
+
+            const getPeriodAtDate = (dateStr) => {
+                return periods.find(p => dateStr >= p.start && dateStr <= p.end) || null;
+            };
+
+            const hasAnyDeletableContent = sortedSelectedDates.some(d => {
+                const hasPeriod = getPeriodAtDate(d) !== null;
+                const dayNote = notes[d];
+                const hasIcons = dayNote?.icons && dayNote.icons.length > 0;
+                const hasText = dayNote?.note && dayNote.note.trim().length > 0;
+                return hasPeriod || hasIcons || hasText;
+            });
+
+            const applyMerge = (target, targetPeriod, refDate) => {
+                if (target === 'before') {
+                    const updated = periods.map(p => {
+                        if (p.id === targetPeriod.id) {
+                            return { ...p, end: refDate };
+                        }
+                        return p;
+                    });
+                    setPeriods(cleanAndMergePeriods(updated));
+                } else if (target === 'after') {
+                    const updated = periods.map(p => {
+                        if (p.id === targetPeriod.id) {
+                            return { ...p, start: refDate };
+                        }
+                        return p;
+                    });
+                    setPeriods(cleanAndMergePeriods(updated));
+                }
+                setMergePrompt(null);
+                setSelectedDates([]);
+            };
+
+            const handleCellMouseDown = (dateStr) => {
+                isMouseDownRef.current = true;
+                dragStartRef.current = dateStr;
+                hasDraggedRef.current = false;
+            };
+
+            const handleCellMouseEnter = (dateStr) => {
+                if (!isMouseDownRef.current || !dragStartRef.current) return;
+                if (dateStr === dragStartRef.current) return;
+
+                hasDraggedRef.current = true;
+                setNonConsecutiveNotice(false);
+
+                const d1 = parseDateStr(dragStartRef.current);
+                const d2 = parseDateStr(dateStr);
+                const startDate = d1 <= d2 ? d1 : d2;
+                const endDate = d1 <= d2 ? d2 : d1;
+
+                const range = [];
+                let curr = new Date(startDate);
+                while (curr <= endDate) {
+                    range.push(toDateStr(curr));
+                    curr.setDate(curr.getDate() + 1);
+                }
+                setSelectedDates(range);
+            };
+
+            const selectToday = () => {
+                const todayStr = toDateStr(today);
+                setViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
+                setSelectedDates([todayStr]);
+                setNonConsecutiveNotice(false);
+            };
+
+            const handlePeriodClick = () => {
+                if (sortedSelectedDates.length === 0) return;
+
+                if (sortedSelectedDates.length > 1 && !isConsecutive) {
+                    setNonConsecutiveNotice(true);
+                    return;
+                }
+
+                setNonConsecutiveNotice(false);
+
+                if (sortedSelectedDates.length > 1 && isConsecutive) {
+                    const start = sortedSelectedDates[0];
+                    const end = sortedSelectedDates[sortedSelectedDates.length - 1];
+                    const newPeriod = {
+                        id: Date.now().toString(),
+                        start,
+                        end,
+                        isClosed: true
+                    };
+                    setPeriods(cleanAndMergePeriods([...periods, newPeriod]));
+                    setSelectedDates([]);
+                    return;
+                }
+
+                const singleDate = sortedSelectedDates[0];
+                if (getPeriodAtDate(singleDate)) {
+                    setSelectedDates([]);
+                    return;
+                }
+
+                const beforePeriods = periods
+                    .filter(p => p.end < singleDate && p.end >= addDays(singleDate, -3))
+                    .sort((a, b) => b.end.localeCompare(a.end));
+
+                const afterPeriods = periods
+                    .filter(p => p.start > singleDate && p.start <= addDays(singleDate, 3))
+                    .sort((a, b) => a.start.localeCompare(b.start));
+
+                const hasBefore = beforePeriods.length > 0;
+                const hasAfter = afterPeriods.length > 0;
+
+                if (hasBefore && hasAfter) {
+                    setMergePrompt({
+                        targetDate: singleDate,
+                        before: beforePeriods[0],
+                        after: afterPeriods[0]
+                    });
+                    return;
+                }
+
+                if (hasBefore && !hasAfter) {
+                    applyMerge('before', beforePeriods[0], singleDate);
+                    return;
+                }
+
+                if (!hasBefore && hasAfter) {
+                    applyMerge('after', afterPeriods[0], singleDate);
+                    return;
+                }
+
+                const spanDays = Math.max(1, Number(periodDuration));
+                const newPeriod = {
+                    id: Date.now().toString(),
+                    start: singleDate,
+                    end: addDays(singleDate, spanDays - 1),
+                    isClosed: true
+                };
+                setPeriods(cleanAndMergePeriods([...periods, newPeriod]));
+                setSelectedDates([]);
+            };
+
+            const handleDeleteSelected = () => {
+                if (sortedSelectedDates.length === 0) return;
+                setNonConsecutiveNotice(false);
+
+                setNotes(prev => {
+                    const nextNotes = { ...prev };
+                    sortedSelectedDates.forEach(d => {
+                        delete nextNotes[d];
+                    });
+                    return nextNotes;
+                });
+
+                let currentPeriods = [...periods];
+                for (const dateStr of sortedSelectedDates) {
+                    const nextPeriods = [];
+                    for (const p of currentPeriods) {
+                        if (dateStr < p.start || dateStr > p.end) {
+                            nextPeriods.push(p);
+                            continue;
+                        }
+                        if (p.start === p.end && p.start === dateStr) {
+                            continue;
+                        }
+                        if (p.start === dateStr) {
+                            nextPeriods.push({ ...p, start: addDays(dateStr, 1) });
+                        } else if (p.end === dateStr) {
+                            nextPeriods.push({ ...p, end: addDays(dateStr, -1) });
+                        } else {
+                            nextPeriods.push({
+                                id: Date.now().toString() + Math.random().toString().slice(2, 6) + '_a',
+                                start: p.start,
+                                end: addDays(dateStr, -1),
+                                isClosed: p.isClosed
+                            });
+                            nextPeriods.push({
+                                id: Date.now().toString() + Math.random().toString().slice(2, 6) + '_b',
+                                start: addDays(dateStr, 1),
+                                end: p.end,
+                                isClosed: p.isClosed
+                            });
+                        }
+                    }
+                    currentPeriods = nextPeriods;
+                }
+
+                setPeriods(cleanAndMergePeriods(currentPeriods));
+                setSelectedDates([]);
+            };
+
+            const toggleNoteIconBatch = (iconId) => {
+                setNotes(prev => {
+                    const next = { ...prev };
+                    const allHave = sortedSelectedDates.every(d => next[d]?.icons?.includes(iconId));
+
+                    sortedSelectedDates.forEach(d => {
+                        const cur = next[d] || { icons: [], note: "" };
+                        let newIcons = cur.icons || [];
+                        if (allHave) {
+                            newIcons = newIcons.filter(id => id !== iconId);
+                        } else {
+                            if (!newIcons.includes(iconId)) {
+                                newIcons = [...newIcons, iconId];
+                            }
+                        }
+                        next[d] = { ...cur, icons: newIcons };
+                    });
+                    return next;
+                });
+            };
+
+            const updateNoteTextBatch = (text) => {
+                setNotes(prev => {
+                    const next = { ...prev };
+                    sortedSelectedDates.forEach(d => {
+                        const cur = next[d] || { icons: [], note: "" };
+                        next[d] = { ...cur, note: text };
+                    });
+                    return next;
+                });
+            };
+
+            const handleExportBackup = () => {
+                try {
+                    const backupData = {
+                        version: 1,
+                        exportDate: toDateStr(new Date()),
+                        periods,
+                        notes,
+                        settings: {
+                            useDefaultParams,
+                            cycleLength,
+                            periodDuration,
+                            showFertileWindow
+                        }
+                    };
+                    const jsonStr = JSON.stringify(backupData, null, 2);
+                    const blob = new Blob([jsonStr], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `生理期健康日誌_備份_${toDateStr(new Date())}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    setBackupNotice({ type: 'success', text: '備份檔案下載成功！請妥善保存。' });
+                    setTimeout(() => setBackupNotice(null), 4000);
+                } catch (e) {
+                    setBackupNotice({ type: 'error', text: '匯出失敗，請重試。' });
+                }
+            };
+
+            const handleCopyBackupText = () => {
+                try {
+                    const backupData = {
+                        version: 1,
+                        exportDate: toDateStr(new Date()),
+                        periods,
+                        notes,
+                        settings: {
+                            useDefaultParams,
+                            cycleLength,
+                            periodDuration,
+                            showFertileWindow
+                        }
+                    };
+                    const jsonStr = JSON.stringify(backupData);
+                    const textArea = document.createElement("textarea");
+                    textArea.value = jsonStr;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    setBackupNotice({ type: 'success', text: '備份代碼已複製到剪貼簿！可貼至備忘錄。' });
+                    setTimeout(() => setBackupNotice(null), 4000);
+                } catch (e) {
+                    setBackupNotice({ type: 'error', text: '複製失敗，請使用檔案下載備份。' });
+                }
+            };
+
+            const applyBackupData = (jsonStr) => {
+                try {
+                    const data = JSON.parse(jsonStr);
+                    if (!data || (!data.periods && !data.notes)) {
+                        throw new Error("格式不正確");
+                    }
+                    if (Array.isArray(data.periods)) {
+                        setPeriods(cleanAndMergePeriods(data.periods));
+                    }
+                    if (data.notes && typeof data.notes === 'object') {
+                        setNotes(data.notes);
+                    }
+                    if (data.settings) {
+                        if (typeof data.settings.useDefaultParams === 'boolean') setUseDefaultParams(data.settings.useDefaultParams);
+                        if (data.settings.cycleLength) setCycleLength(Number(data.settings.cycleLength));
+                        if (data.settings.periodDuration) setPeriodDuration(Number(data.settings.periodDuration));
+                        if (typeof data.settings.showFertileWindow === 'boolean') setShowFertileWindow(data.settings.showFertileWindow);
+                    }
+                    setShowRestoreModal(false);
+                    setRestoreText("");
+                    setBackupNotice({ type: 'success', text: '備份資料還原成功！' });
+                    setTimeout(() => setBackupNotice(null), 4000);
+                } catch (err) {
+                    setBackupNotice({ type: 'error', text: '還原失敗：檔案或文字格式錯誤！' });
+                }
+            };
+
+            const handleFileImport = (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    applyBackupData(event.target.result);
+                };
+                reader.readAsText(file);
+                e.target.value = "";
+            };
+
+            const year = viewDate.getFullYear();
+            const month = viewDate.getMonth();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const firstDayOfMonth = new Date(year, month, 1).getDay();
+
+            const prevMonth = () => {
+                setSlideDir("slide-right");
+                setViewDate(new Date(year, month - 1, 1));
+            };
+
+            const nextMonth = () => {
+                setSlideDir("slide-left");
+                setViewDate(new Date(year, month + 1, 1));
+            };
+
+            const touchStartX = React.useRef(0);
+            const touchStartY = React.useRef(0);
+
+            const handleTouchStart = (e) => {
+                touchStartX.current = e.touches[0].clientX;
+                touchStartY.current = e.touches[0].clientY;
+            };
+
+            const handleTouchEnd = (e) => {
+                const deltaX = e.changedTouches[0].clientX - touchStartX.current;
+                const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+                if (Math.abs(deltaX) > 45 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
+                    if (deltaX < 0) nextMonth();
+                    else prevMonth();
+                }
+            };
+
+            const calendarCells = [];
+            for (let i = 0; i < firstDayOfMonth; i++) calendarCells.push(null);
+            for (let i = 1; i <= daysInMonth; i++) calendarCells.push(i);
+
+            const getDayStatus = (dateStr) => {
+                const activePeriod = getPeriodAtDate(dateStr);
+                const isPeriod = !!activePeriod;
+                const isPeriodStart = activePeriod?.start === dateStr;
+                const isPeriodEnd = activePeriod?.end === dateStr;
+                const isPredicted = calculations.predictedPeriod.includes(dateStr);
+                const isOvulationDay = calculations.ovulationDay === dateStr;
+                const isOvulationWindow = showFertileWindow && calculations.ovulationPeriod.includes(dateStr);
+                return { isPeriod, isPeriodStart, isPeriodEnd, isPredicted, isOvulationDay, isOvulationWindow, activePeriod };
+            };
+
+            return (
+                <div className="max-w-md mx-auto min-h-screen pb-28 px-4 pt-4 text-gray-800">
+                    <div className="bg-white rounded-3xl p-5 shadow-sm border-t-8 border-rose-500 mb-4 flex justify-between items-center">
+                        <div>
+                            <h1 className="text-xl font-black text-gray-800 flex items-center gap-2">
+                                <span className="text-rose-600"><Icon name="Heart" className="w-5 h-5 inline" /></span> 生理期日誌
+                            </h1>
+                            <p className="text-xs text-gray-400 font-medium mt-0.5">預測經期與日常症狀追蹤</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => { setShowStats(!showStats); setShowSettings(false); }}
+                                className={`p-3 rounded-2xl transition-all active:scale-95 ${showStats ? 'bg-rose-600 text-white shadow-sm' : 'bg-rose-50 text-rose-600'}`}
+                                title="歷史週期統計"
+                            >
+                                <Icon name="BarChart" className="w-5 h-5" />
+                            </button>
+                            <button
+                                onClick={() => { setShowSettings(!showSettings); setShowStats(false); }}
+                                className={`p-3 rounded-2xl transition-all active:scale-95 ${showSettings ? 'bg-rose-600 text-white shadow-sm' : 'bg-rose-50 text-rose-600'}`}
+                                title="參數設定"
+                            >
+                                <Icon name="Settings" className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {showSettings && (
+                        <div className="bg-white rounded-3xl p-5 shadow-sm mb-4 border border-rose-100 space-y-4 animate-in fade-in">
+                            <div className="flex justify-between items-center border-b border-rose-50 pb-2">
+                                <h3 className="font-bold text-sm text-rose-600">週期預測參數設定</h3>
+                                <button onClick={() => setShowSettings(false)} className="text-xs text-gray-400 hover:text-gray-600 font-bold">關閉</button>
+                            </div>
+
+                            <div className="flex items-center justify-between p-3 bg-rose-50/70 rounded-2xl">
+                                <div>
+                                    <div className="text-xs font-bold text-gray-800">使用預設參數推算</div>
+                                    <div className="text-[10px] text-gray-500">關閉時將嚴格依照歷史真實平均推算</div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setUseDefaultParams(!useDefaultParams)}
+                                    className={`w-12 h-6 flex items-center rounded-full p-1 transition-all ${useDefaultParams ? 'bg-rose-600 justify-end' : 'bg-gray-300 justify-start'}`}
+                                >
+                                    <span className="bg-white w-4 h-4 rounded-full shadow-md"></span>
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 text-xs font-bold text-gray-600">
+                                <div>
+                                    <label className="block mb-1">預設週期長度 (天)</label>
+                                    <input
+                                        type="number"
+                                        disabled={!useDefaultParams}
+                                        value={cycleLength}
+                                        onChange={e => setCycleLength(Math.max(15, Number(e.target.value)))}
+                                        className="w-full bg-rose-50/60 border border-rose-200 rounded-xl p-2.5 font-mono text-center font-bold text-gray-800 outline-none focus:border-rose-500 disabled:opacity-40"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block mb-1">預設經期天數 (天)</label>
+                                    <input
+                                        type="number"
+                                        value={periodDuration}
+                                        onChange={e => setPeriodDuration(Math.max(1, Number(e.target.value)))}
+                                        className="w-full bg-rose-50/60 border border-rose-200 rounded-xl p-2.5 font-mono text-center font-bold text-gray-800 outline-none focus:border-rose-500"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-1">
+                                <span className="text-xs font-bold text-gray-700">顯示易孕期標記</span>
+                                <input
+                                    type="checkbox"
+                                    checked={showFertileWindow}
+                                    onChange={e => setShowFertileWindow(e.target.checked)}
+                                    className="w-4 h-4 accent-rose-600 rounded cursor-pointer"
+                                />
+                            </div>
+
+                            <div className="pt-2 border-t border-rose-100">
+                                <div className="text-xs font-bold text-gray-700 mb-1 flex items-center justify-between">
+                                    <span>資料備份與還原</span>
+                                    <span className="text-[10px] text-gray-400 font-normal">本機共 {periods.length} 筆經期</span>
+                                </div>
+                                <p className="text-[10px] text-gray-400 mb-3 leading-relaxed">
+                                    資料儲存於此裝置瀏覽器。建議定期備份，換手機或更換瀏覽器時可輕鬆還原。
+                                </p>
+
+                                {backupNotice && (
+                                    <div className={`mb-3 p-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 animate-in fade-in ${
+                                        backupNotice.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    }`}>
+                                        <span>{backupNotice.type === 'success' ? '✓' : '⚠️'}</span>
+                                        <span>{backupNotice.text}</span>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleExportBackup}
+                                        className="p-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+                                    >
+                                        <Icon name="Download" className="w-3.5 h-3.5" />
+                                        <span>下載備份檔</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleCopyBackupText}
+                                        className="p-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+                                    >
+                                        <Icon name="Copy" className="w-3.5 h-3.5" />
+                                        <span>複製備份碼</span>
+                                    </button>
+                                </div>
+
+                                <div className="mt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowRestoreModal(true)}
+                                        className="w-full p-2.5 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer border border-gray-200"
+                                    >
+                                        <Icon name="Upload" className="w-3.5 h-3.5 text-rose-600" />
+                                        <span>讀取還原備份資料</span>
+                                    </button>
+                                </div>
+
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    onChange={handleFileImport}
+                                    accept=".json"
+                                    className="hidden"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {showStats && (
+                        <div className="bg-white rounded-3xl p-5 shadow-sm mb-4 border border-rose-100 space-y-4 animate-in fade-in">
+                            <div className="flex justify-between items-center border-b border-rose-50 pb-2">
+                                <h3 className="font-bold text-sm text-rose-600">週期預測與歷史統計</h3>
+                                <button onClick={() => setShowStats(false)} className="text-xs text-gray-400 hover:text-gray-600 font-bold">關閉</button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-gradient-to-br from-red-500 to-rose-600 text-white p-3.5 rounded-2xl shadow-sm shadow-rose-200">
+                                    <div className="text-[10px] font-medium opacity-90">下次預測經期</div>
+                                    <div className="text-sm font-black mt-1">
+                                        {calculations.nextStart ? calculations.nextStart.replace(/-/g, ' / ') : (
+                                            calculations.mode === "need_more_data" ? "需記錄至少2次" : "記錄後推算"
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="bg-gradient-to-br from-purple-600 to-rose-500 text-white p-3.5 rounded-2xl shadow-sm shadow-purple-100">
+                                    <div className="text-[10px] font-medium opacity-90 flex items-center gap-1">
+                                        <span>預測排卵日</span>
+                                        <Icon name="Sparkles" className="w-2.5 h-2.5" />
+                                    </div>
+                                    <div className="text-sm font-black mt-1">
+                                        {calculations.ovulationDay ? calculations.ovulationDay.replace(/-/g, ' / ') : (
+                                            calculations.mode === "need_more_data" ? "需記錄至少2次" : "記錄後推算"
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 text-center">
+                                <div className="bg-rose-50/70 p-3 rounded-2xl">
+                                    <div className="text-[10px] text-gray-500 font-bold">歷史平均週期</div>
+                                    <div className="text-lg font-black text-rose-600 mt-0.5">
+                                        {stats.avgCycle ? `${stats.avgCycle} 天` : '資料不足 (需2次)'}
+                                    </div>
+                                </div>
+                                <div className="bg-rose-50/70 p-3 rounded-2xl">
+                                    <div className="text-[10px] text-gray-500 font-bold">平均經期天數</div>
+                                    <div className="text-lg font-black text-red-600 mt-0.5">
+                                        {stats.avgDuration ? `${stats.avgDuration} 天` : '尚未記錄'}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="text-xs font-bold text-gray-700 mb-2">歷史記錄列表 ({periods.length} 筆)</div>
+                                {stats.history.length === 0 ? (
+                                    <div className="text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-2xl">
+                                        尚未有完整的經期記錄，請在日曆上點選開始記錄。
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                        {stats.history.map(item => (
+                                            <div key={item.id} className="flex justify-between items-center p-2.5 bg-rose-50/50 rounded-xl text-xs">
+                                                <div>
+                                                    <div className="font-bold text-gray-700 font-mono">
+                                                        {item.start} ~ {item.end}
+                                                    </div>
+                                                    <div className="text-[10px] text-gray-400">
+                                                        來潮 {item.duration} 天 {item.cycleDays ? `· 週期相隔 ${item.cycleDays} 天` : '· (首筆記錄)'}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => setPeriods(prev => prev.filter(p => p.id !== item.id))}
+                                                    className="p-2 text-gray-400 hover:text-red-500 rounded-lg active:scale-95"
+                                                    title="刪除此筆記錄"
+                                                >
+                                                    <Icon name="Trash" className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 月曆卡片區塊 */}
+                    <div
+                        className="bg-white rounded-3xl p-5 shadow-sm mb-4"
+                        onTouchStart={handleTouchStart}
+                        onTouchEnd={handleTouchEnd}
+                    >
+                        <div className="flex justify-between items-center mb-4 px-2">
+                            <button onClick={prevMonth} className="p-2 hover:bg-rose-50 text-rose-600 rounded-full active:scale-90 transition-all">
+                                <Icon name="ChevronLeft" className="w-5 h-5" />
+                            </button>
+                            <div className="flex items-center gap-2">
+                                <h2 className="text-base font-black text-gray-800 tracking-wide">
+                                    {year} 年 {month + 1} 月
+                                </h2>
+                                <button
+                                    type="button"
+                                    onClick={selectToday}
+                                    className="text-[11px] bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold px-2 py-0.5 rounded-lg active:scale-95 transition-all cursor-pointer"
+                                    title="點選自動切換並選取今天"
+                                >
+                                    今天
+                                </button>
+                            </div>
+                            <button onClick={nextMonth} className="p-2 hover:bg-rose-50 text-rose-600 rounded-full active:scale-90 transition-all">
+                                <Icon name="ChevronRight" className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-7 text-center text-xs font-bold text-rose-300 mb-2">
+                            {['日', '一', '二', '三', '四', '五', '六'].map(d => <div key={d} className="py-1">{d}</div>)}
+                        </div>
+
+                        <div className={`grid grid-cols-7 gap-1 text-center font-bold select-none ${slideDir}`}>
+                            {calendarCells.map((dayNum, idx) => {
+                                if (!dayNum) return <div key={`empty-${idx}`} className="aspect-square" />;
+
+                                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                                const isTodayDate = dateStr === toDateStr(today);
+                                const status = getDayStatus(dateStr);
+                                const isSelected = selectedDates.includes(dateStr);
+                                const dayNote = notes[dateStr];
+
+                                let bgStyle = "text-gray-700 hover:bg-rose-50";
+                                if (status.isPeriod) {
+                                    bgStyle = "bg-red-500 text-white font-black shadow-sm shadow-red-200";
+                                } else if (status.isPredicted) {
+                                    bgStyle = "bg-rose-50 text-rose-700 border-2 border-dashed border-rose-400";
+                                } else if (status.isOvulationDay) {
+                                    bgStyle = "bg-[#460b99] text-white font-black shadow-sm shadow-purple-200";
+                                } else if (status.isOvulationWindow) {
+                                    bgStyle = "bg-purple-100 text-purple-700";
+                                }
+
+                                return (
+                                    <button
+                                        key={dateStr}
+                                        type="button"
+                                        onMouseDown={() => handleCellMouseDown(dateStr)}
+                                        onMouseEnter={() => handleCellMouseEnter(dateStr)}
+                                        onClick={() => {
+                                            if (hasDraggedRef.current) return;
+                                            handleDateClick(dateStr);
+                                        }}
+                                        className={`aspect-square rounded-2xl flex flex-col items-center justify-between p-1 transition-all relative ${bgStyle} ${
+                                            isSelected ? 'ring-2 ring-red-500 ring-offset-2 scale-95 z-10' : ''
+                                        }`}
+                                    >
+                                        <span className={`text-xs font-bold mt-0.5 flex items-center gap-0.5 ${
+                                            isTodayDate && !status.isPeriod && !status.isOvulationDay ? 'text-red-600 font-black' : ''
+                                        }`}>
+                                            {dayNum}
+                                        </span>
+
+                                        <div className="flex items-center justify-center gap-0.5 min-h-[10px] mb-0.5">
+                                            {status.isPeriod && !status.isPeriodStart && !status.isPeriodEnd && (
+                                                <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                                            )}
+                                            {status.isPeriodStart && status.isPeriodEnd && <span className="text-[8px] leading-none">始訖</span>}
+                                            {status.isPeriodStart && !status.isPeriodEnd && <span className="text-[8px] leading-none">始</span>}
+                                            {!status.isPeriodStart && status.isPeriodEnd && <span className="text-[8px] leading-none">訖</span>}
+                                            {status.isOvulationDay && <span className="text-[9px] leading-none">✨</span>}
+                                            {dayNote?.icons?.length > 0 && (
+                                                <div className="flex items-center justify-center gap-0.5">
+                                                    {dayNote.icons.map(iconId => {
+                                                        const iconDef = NOTE_ICONS.find(item => item.id === iconId);
+                                                        if (!iconDef) return null;
+                                                        const isSingle = dayNote.icons.length === 1;
+                                                        return (
+                                                            <span
+                                                                key={iconId}
+                                                                className={`leading-none transition-all ${
+                                                                    isSingle ? 'text-[18px]' : 'text-[10px]'
+                                                                }`}
+                                                            >
+                                                                {iconDef.emoji}
+                                                            </span>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                            {dayNote?.note && (!dayNote?.icons || dayNote.icons.length === 0) && (
+                                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                                            )}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <div className="mt-5 pt-4 border-t border-rose-50 flex flex-wrap justify-around text-[10px] font-bold text-gray-500">
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span> 經期
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-rose-50 border border-dashed border-rose-400"></span> 預測經期
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-[#460b99]"></span> 排卵日
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span> 記事備註
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 操作與記事區塊 */}
+                    <div className="bg-white rounded-3xl p-5 shadow-sm space-y-4">
+                        {nonConsecutiveNotice && (
+                            <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                                <span>⚠️</span>
+                                <span>所選的日期並非連續天數，無法建立經期起訖，請選取相鄰連續日期。</span>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-3 gap-2">
+                            <button
+                                type="button"
+                                onClick={handlePeriodClick}
+                                disabled={sortedSelectedDates.length === 0 || (sortedSelectedDates.length > 1 && !isConsecutive)}
+                                className={`py-3.5 rounded-2xl text-xs sm:text-sm font-black transition-all shadow-sm flex items-center justify-center gap-1.5 ${
+                                    sortedSelectedDates.length === 0 || (sortedSelectedDates.length > 1 && !isConsecutive)
+                                        ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                                        : 'bg-red-500 hover:bg-red-600 text-white active:scale-95 shadow-red-200'
+                                }`}
+                            >
+                                <Icon name="DropletFilled" className="w-4 h-4" />
+                                <span>經期</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDeleteSelected}
+                                disabled={!hasAnyDeletableContent}
+                                className={`py-3.5 rounded-2xl text-xs sm:text-sm font-black transition-all shadow-sm flex items-center justify-center gap-1.5 ${
+                                    !hasAnyDeletableContent
+                                        ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                                        : 'bg-red-50 hover:bg-red-100 text-red-600 active:scale-95'
+                                }`}
+                            >
+                                <Icon name="Trash" className="w-4 h-4" />
+                                <span>刪除</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSelectedDates([]);
+                                    setNonConsecutiveNotice(false);
+                                }}
+                                disabled={sortedSelectedDates.length === 0}
+                                className={`py-3.5 rounded-2xl text-xs sm:text-sm font-black transition-all shadow-sm flex items-center justify-center gap-1.5 ${
+                                    sortedSelectedDates.length === 0
+                                        ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                                        : 'bg-gray-100 hover:bg-gray-200 text-gray-600 active:scale-95'
+                                }`}
+                            >
+                                <Icon name="X" className="w-4 h-4" />
+                                <span>取消選取</span>
+                            </button>
+                        </div>
+
+                        <div>
+                            <div className="mb-2">
+                                <label className="text-xs font-bold text-gray-600">日常症狀 / 心情記錄</label>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                                {NOTE_ICONS.map(item => {
+                                    const isChecked = sortedSelectedDates.length > 0 && sortedSelectedDates.every(d => notes[d]?.icons?.includes(item.id));
+                                    return (
+                                        <button
+                                            key={item.id}
+                                            type="button"
+                                            disabled={sortedSelectedDates.length === 0}
+                                            onClick={() => toggleNoteIconBatch(item.id)}
+                                            className={`p-4 rounded-2xl border text-center transition-all flex flex-col items-center gap-1.5 ${
+                                                sortedSelectedDates.length === 0
+                                                    ? 'bg-gray-50 border-gray-50 text-gray-300 opacity-60 cursor-not-allowed'
+                                                    : isChecked
+                                                        ? 'bg-rose-100 border-rose-400 text-rose-800 font-bold shadow-sm active:scale-90'
+                                                        : 'bg-gray-50 border-gray-50 text-gray-500 active:scale-90'
+                                            }`}
+                                        >
+                                            <span className="text-3xl leading-none">{item.emoji}</span>
+                                            <span className="text-xs font-bold">{item.label}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div>
+                            <div className="mb-2">
+                                <label className="text-xs font-bold text-gray-600">備忘記事 (有記事時日曆顯示藍點)</label>
+                            </div>
+                            <textarea
+                                rows="2"
+                                placeholder={sortedSelectedDates.length === 0 ? "請先點選日期以記錄備忘..." : "寫下身體狀況或備忘..."}
+                                disabled={sortedSelectedDates.length === 0}
+                                value={primaryDateStr ? (notes[primaryDateStr]?.note || "") : ""}
+                                onChange={(e) => updateNoteTextBatch(e.target.value)}
+                                className={`w-full bg-rose-50/40 border border-rose-100 rounded-2xl p-3 text-sm text-gray-700 outline-none focus:border-rose-400 focus:bg-white transition-all resize-none ${
+                                    sortedSelectedDates.length === 0 ? 'opacity-60 cursor-not-allowed' : ''
+                                }`}
+                            ></textarea>
+                        </div>
+                    </div>
+
+                    {mergePrompt && (
+                        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+                            <div className="bg-white rounded-3xl p-6 shadow-2xl max-w-xs w-full space-y-4 border border-rose-100">
+                                <div className="flex items-center gap-2 text-rose-600 font-bold text-base">
+                                    <Icon name="DropletFilled" className="w-5 h-5 text-red-500" />
+                                    <span>選擇合併方向</span>
+                                </div>
+                                <p className="text-xs text-gray-600 leading-relaxed">
+                                    選取的日期 <span className="font-mono font-bold text-red-600">{mergePrompt.targetDate}</span> 前後 3 天內皆有經期，請問要合併至哪一個經期？
+                                </p>
+                                <div className="space-y-2 pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => applyMerge('before', mergePrompt.before, mergePrompt.targetDate)}
+                                        className="w-full p-3.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-2xl text-xs font-bold text-left transition-all flex justify-between items-center active:scale-95"
+                                    >
+                                        <div>
+                                            <div className="text-[10px] text-rose-400 font-bold">合併至前一個經期</div>
+                                            <div className="font-mono font-bold mt-0.5">{mergePrompt.before.start} ~ {mergePrompt.targetDate}</div>
+                                        </div>
+                                        <span className="text-rose-600 font-black text-xs">選擇</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => applyMerge('after', mergePrompt.after, mergePrompt.targetDate)}
+                                        className="w-full p-3.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-2xl text-xs font-bold text-left transition-all flex justify-between items-center active:scale-95"
+                                    >
+                                        <div>
+                                            <div className="text-[10px] text-purple-400 font-bold">合併至後一個經期</div>
+                                            <div className="font-mono font-bold mt-0.5">{mergePrompt.targetDate} ~ {mergePrompt.after.end}</div>
+                                        </div>
+                                        <span className="text-purple-600 font-black text-xs">選擇</span>
+                                    </button>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setMergePrompt(null)}
+                                    className="w-full py-2 text-xs text-gray-400 font-bold hover:text-gray-600 transition-all text-center"
+                                >
+                                    取消
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {showRestoreModal && (
+                        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+                            <div className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full space-y-4 border border-rose-100">
+                                <div className="flex items-center justify-between border-b border-rose-50 pb-2">
+                                    <div className="flex items-center gap-2 text-rose-600 font-bold text-sm">
+                                        <Icon name="Upload" className="w-4 h-4" />
+                                        <span>讀取備份資料</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setShowRestoreModal(false); setRestoreText(""); }}
+                                        className="text-gray-400 hover:text-gray-600 font-bold text-xs"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+
+                                <p className="text-xs text-gray-500 leading-relaxed">
+                                    請選擇先前匯出的 <span className="font-mono font-bold text-rose-600">.json</span> 備份檔案，或直接在下方貼上備份文字：
+                                </p>
+
+                                <button
+                                    type="button"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="w-full py-3 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer border border-rose-200"
+                                >
+                                    <Icon name="Download" className="w-4 h-4 rotate-180 text-rose-600" />
+                                    <span>選擇備份檔案 (.json)</span>
+                                </button>
+
+                                <div className="flex items-center gap-2 text-[10px] text-gray-300 font-bold">
+                                    <div className="flex-1 h-[1px] bg-gray-100"></div>
+                                    <span>或貼上備份代碼</span>
+                                    <div className="flex-1 h-[1px] bg-gray-100"></div>
+                                </div>
+
+                                <textarea
+                                    rows="3"
+                                    placeholder="在此處貼上複製的備份文字代碼..."
+                                    value={restoreText}
+                                    onChange={(e) => setRestoreText(e.target.value)}
+                                    className="w-full bg-rose-50/30 border border-rose-100 rounded-xl p-2.5 text-xs text-gray-700 outline-none focus:border-rose-400 font-mono resize-none"
+                                ></textarea>
+
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setShowRestoreModal(false); setRestoreText(""); }}
+                                        className="w-1/2 py-2.5 text-xs text-gray-500 bg-gray-100 hover:bg-gray-200 font-bold rounded-xl transition-all"
+                                    >
+                                        取消
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={!restoreText.trim()}
+                                        onClick={() => applyBackupData(restoreText)}
+                                        className={`w-1/2 py-2.5 text-xs font-bold rounded-xl transition-all ${
+                                            restoreText.trim()
+                                                ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-sm shadow-rose-200 active:scale-95 cursor-pointer'
+                                                : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                                        }`}
+                                    >
+                                        匯入代碼
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // ==========================================
         //         最外層主控元件 (App)
         // ==========================================
 
         const App = () => {
             const getInitialTab = () => {
                 const tab = new URLSearchParams(window.location.search).get('tab');
-                return tab === 'wine' ? 'wine' : 'expense';
+                if (tab === 'wine') return 'wine';
+                if (tab === 'period') return 'period';
+                return 'expense';
             };
             const [activeTab, setActiveTab] = React.useState(getInitialTab);
             const [authStatus, setAuthStatus] = React.useState('loading');
             const [apiToken, setApiToken] = React.useState("");
             const [inputToken, setInputToken] = React.useState("");
+            const [authErrorMsg, setAuthErrorMsg] = React.useState("");
 
             const expenseApiUrl = 'https://script.google.com/macros/s/AKfycbxyB9Z2sJHxJ3533aqEYnCxMecQShD5nUBBsfYsJpgeM2aPOXTMKU44gwM8IS7M9eYU/exec';
 
@@ -1048,6 +2233,7 @@
                 if (!idToVerify) return;
                 const cleanedId = idToVerify.replace(/["']/g, "").trim();
                 setAuthStatus('loading');
+                setAuthErrorMsg("");
 
                 let isMounted = true;
                 let timeoutId;
@@ -1057,13 +2243,13 @@
                     if (timeoutId) clearTimeout(timeoutId);
                     if (res && res.auth === 'OK') {
                         setApiToken(cleanedId);
-                        localStorage.setItem('api_token_id', cleanedId);
+                        safeStorage.setItem('api_token_id', cleanedId);
                         setTimeout(() => { if (isMounted) setAuthStatus('authorized'); }, 100);
                     } else {
-                        localStorage.removeItem('api_token_id');
+                        safeStorage.removeItem('api_token_id');
                         if (isMounted) {
                             setAuthStatus('denied');
-                            alert('驗證失敗，請確認金鑰是否正確！');
+                            setAuthErrorMsg('驗證失敗，請確認金鑰是否正確！');
                         }
                     }
                     const s = document.getElementById('v-script-shared');
@@ -1073,7 +2259,7 @@
                 timeoutId = setTimeout(() => {
                     if (isMounted) {
                         setAuthStatus('denied');
-                        alert('連線逾時，請稍後再試！');
+                        setAuthErrorMsg('連線逾時，請檢查網路連線或稍後再試！');
                     }
                     const s = document.getElementById('v-script-shared');
                     if (s) s.remove();
@@ -1089,7 +2275,7 @@
                 const params = new URLSearchParams(window.location.search);
                 let id = params.get('id');
                 if (!id) {
-                    id = localStorage.getItem('api_token_id');
+                    id = safeStorage.getItem('api_token_id');
                 }
                 if (!id) {
                     setAuthStatus('denied');
@@ -1102,21 +2288,24 @@
                 if (activeTab === 'expense') {
                     document.body.className = 'theme-expense';
                     document.documentElement.style.setProperty('--scrollbar-thumb-color', '#F8BBD0');
-                } else {
+                } else if (activeTab === 'wine') {
                     document.body.className = 'theme-wine';
                     document.documentElement.style.setProperty('--scrollbar-thumb-color', '#fbbf24');
+                } else if (activeTab === 'period') {
+                    document.body.className = 'theme-period';
+                    document.documentElement.style.setProperty('--scrollbar-thumb-color', '#FECDD3');
                 }
             }, [activeTab]);
 
             if (authStatus === 'loading') {
-                const loaderColorClass = activeTab === 'expense' ? 'text-pink-600' : 'text-amber-500';
+                const loaderColorClass = activeTab === 'expense' ? 'text-pink-600' : activeTab === 'wine' ? 'text-amber-500' : 'text-rose-600';
                 return (
                     <div className="min-h-screen flex items-center justify-center bg-[#FCE4EC] text-pink-700 font-bold px-10 text-center">
                         <div className="space-y-6">
                             <Icon name="Loader" className={`w-16 h-16 mx-auto ${loaderColorClass}`} />
                             <div className="space-y-2">
                                 <p className="tracking-[0.2em] uppercase italic text-xl font-black">正在安全驗證中...</p>
-                                <p className="text-xs text-slate-400 font-medium tracking-widest">正在連線至 Google 伺服器</p>
+                                <p className="text-xs text-slate-400 font-medium tracking-widest">正在連線至伺服器驗證權限</p>
                             </div>
                         </div>
                     </div>
@@ -1130,18 +2319,18 @@
                     verifyToken(inputToken.trim());
                 };
 
-                const cardBorder = activeTab === 'expense' ? 'border-pink-100' : 'border-amber-900/20';
-                const keyColorClass = activeTab === 'expense' ? 'text-pink-600' : 'text-amber-900';
-                const buttonBg = activeTab === 'expense' ? 'bg-pink-500 hover:bg-pink-600 shadow-pink-100' : 'bg-amber-900 hover:bg-amber-950 shadow-amber-100';
-                const focusBorder = activeTab === 'expense' ? 'focus:border-pink-500 hover:border-pink-200' : 'focus:border-amber-900 hover:border-amber-200';
+                const cardBorder = activeTab === 'expense' ? 'border-pink-100' : activeTab === 'wine' ? 'border-amber-900/20' : 'border-rose-100';
+                const keyColorClass = activeTab === 'expense' ? 'text-pink-600' : activeTab === 'wine' ? 'text-amber-900' : 'text-rose-600';
+                const buttonBg = activeTab === 'expense' ? 'bg-pink-500 hover:bg-pink-600 shadow-pink-100' : activeTab === 'wine' ? 'bg-amber-900 hover:bg-amber-950 shadow-amber-100' : 'bg-rose-600 hover:bg-rose-700 shadow-rose-100';
+                const focusBorder = activeTab === 'expense' ? 'focus:border-pink-500 hover:border-pink-200' : activeTab === 'wine' ? 'focus:border-amber-900 hover:border-amber-200' : 'focus:border-rose-500 hover:border-rose-200';
 
                 return (
                     <div className="min-h-screen flex flex-col">
-                        <header className="w-full max-w-md mx-auto px-4 pt-4 pb-2">
-                            <div className="glass-card rounded-3xl p-1.5 flex justify-between items-center shadow-lg border border-white/20 backdrop-blur-md bg-white/40">
+                        <header className="sticky top-0 z-[150] w-full max-w-md mx-auto px-4 pt-4 pb-2">
+                            <div className="glass-card rounded-3xl p-1.5 flex justify-between items-center shadow-lg border border-white/20 backdrop-blur-md bg-white/40 gap-1">
                                 <button
                                     onClick={() => setActiveTab('expense')}
-                                    className={`flex-1 py-3 px-4 rounded-2xl font-bold text-sm tracking-widest transition-all duration-300 flex items-center justify-center space-x-1 cursor-pointer ${activeTab === 'expense'
+                                    className={`flex-1 py-3 px-2 sm:px-3 rounded-2xl font-bold text-xs sm:text-sm tracking-wider transition-all duration-300 flex items-center justify-center space-x-1 cursor-pointer ${activeTab === 'expense'
                                         ? 'bg-pink-500 text-white shadow-md scale-[1.02]'
                                         : 'text-gray-500 hover:text-pink-500 bg-transparent'
                                         }`}
@@ -1151,7 +2340,7 @@
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('wine')}
-                                    className={`flex-1 py-3 px-4 rounded-2xl font-bold text-sm tracking-widest transition-all duration-300 flex items-center justify-center space-x-1 cursor-pointer ${activeTab === 'wine'
+                                    className={`flex-1 py-3 px-2 sm:px-3 rounded-2xl font-bold text-xs sm:text-sm tracking-wider transition-all duration-300 flex items-center justify-center space-x-1 cursor-pointer ${activeTab === 'wine'
                                         ? 'bg-amber-900 text-white shadow-md scale-[1.02]'
                                         : 'text-gray-600 hover:text-amber-900 bg-transparent'
                                         }`}
@@ -1159,41 +2348,62 @@
                                     <span>🍺</span>
                                     <span>微醺時光</span>
                                 </button>
+                                <button
+                                    onClick={() => setActiveTab('period')}
+                                    className={`flex-1 py-3 px-2 sm:px-3 rounded-2xl font-bold text-xs sm:text-sm tracking-wider transition-all duration-300 flex items-center justify-center space-x-1 cursor-pointer ${activeTab === 'period'
+                                        ? 'bg-rose-600 text-white shadow-md scale-[1.02]'
+                                        : 'text-gray-600 hover:text-rose-600 bg-transparent'
+                                        }`}
+                                >
+                                    <span>🌸</span>
+                                    <span>生理期日誌</span>
+                                </button>
                             </div>
                         </header>
 
-                        <div className="flex-1 flex items-center justify-center px-6 py-6 pb-20">
-                            <div className={`bg-white rounded-3xl p-8 max-w-md w-full shadow-xl space-y-6 border ${cardBorder} text-center animate-in fade-in duration-300`}>
-                                <div className="text-6xl animate-bounce">🔑</div>
-                                <div className="space-y-2">
-                                    <h2 className={`text-2xl font-black ${keyColorClass} tracking-tight`}>需要授權金鑰(ID)</h2>
-                                    <p className="text-sm text-gray-500 font-medium">請輸入您的金鑰以載入系統</p>
-                                </div>
-                                <form onSubmit={handleManualLogin} className="space-y-4 text-left">
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 pl-1">授權金鑰 / ID</label>
-                                        <input
-                                            required
-                                            type="password"
-                                            placeholder="請貼上或輸入金鑰..."
-                                            value={inputToken}
-                                            onChange={(e) => setInputToken(e.target.value)}
-                                            className={`w-full border-2 border-gray-100 ${focusBorder} rounded-2xl py-4 px-5 outline-none transition-all text-base font-mono font-bold text-gray-700 bg-gray-50 placeholder:text-gray-300`}
-                                        />
+                        {activeTab === 'period' ? (
+                            <main className="flex-1">
+                                <PeriodApp />
+                            </main>
+                        ) : (
+                            <div className="flex-1 flex items-center justify-center px-6 py-6 pb-20">
+                                <div className={`bg-white rounded-3xl p-8 max-w-md w-full shadow-xl space-y-6 border ${cardBorder} text-center animate-in fade-in duration-300`}>
+                                    <div className="text-6xl animate-bounce">🔑</div>
+                                    <div className="space-y-2">
+                                        <h2 className={`text-2xl font-black ${keyColorClass} tracking-tight`}>需要授權金鑰 (ID)</h2>
+                                        <p className="text-sm text-gray-500 font-medium">請輸入您的金鑰以載入雲端試算表記錄</p>
                                     </div>
-                                    <button
-                                        type="submit"
-                                        className={`w-full py-4 rounded-2xl font-bold text-white ${buttonBg} shadow-lg transition-all active:scale-95 cursor-pointer text-center text-lg tracking-widest`}
-                                    >
-                                        確認驗證
-                                    </button>
-                                </form>
-                                <div className="text-[10px] text-gray-400 font-medium leading-relaxed pt-2 border-t border-gray-50">
-                                    驗證成功後，此裝置將自動記憶金鑰，<br />
-                                    下次即可直接開啟使用。
+                                    {authErrorMsg && (
+                                        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-2xl animate-in fade-in">
+                                            ⚠️ {authErrorMsg}
+                                        </div>
+                                    )}
+                                    <form onSubmit={handleManualLogin} className="space-y-4 text-left">
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 pl-1">授權金鑰 / ID</label>
+                                            <input
+                                                required
+                                                type="password"
+                                                placeholder="請貼上或輸入金鑰..."
+                                                value={inputToken}
+                                                onChange={(e) => setInputToken(e.target.value)}
+                                                className={`w-full border-2 border-gray-100 ${focusBorder} rounded-2xl py-4 px-5 outline-none transition-all text-base font-mono font-bold text-gray-700 bg-gray-50 placeholder:text-gray-300`}
+                                            />
+                                        </div>
+                                        <button
+                                            type="submit"
+                                            className={`w-full py-4 rounded-2xl font-bold text-white ${buttonBg} shadow-lg transition-all active:scale-95 cursor-pointer text-center text-lg tracking-widest`}
+                                        >
+                                            確認驗證
+                                        </button>
+                                    </form>
+                                    <div className="text-[10px] text-gray-400 font-medium leading-relaxed pt-2 border-t border-gray-50">
+                                        驗證成功後，此裝置將自動記憶金鑰。<br />
+                                        （生理期日誌為離線版，可隨時點上方切換使用）
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 );
             }
@@ -1201,10 +2411,10 @@
             return (
                 <div className="min-h-screen flex flex-col">
                     <header className="sticky top-0 z-[150] w-full max-w-md mx-auto px-4 pt-4 pb-2">
-                        <div className="glass-card rounded-3xl p-1.5 flex justify-between items-center shadow-lg border border-white/20 backdrop-blur-md bg-white/40">
+                        <div className="glass-card rounded-3xl p-1.5 flex justify-between items-center shadow-lg border border-white/20 backdrop-blur-md bg-white/40 gap-1">
                             <button
                                 onClick={() => setActiveTab('expense')}
-                                className={`flex-1 py-3 px-4 rounded-2xl font-bold text-sm tracking-widest transition-all duration-300 flex items-center justify-center space-x-1 cursor-pointer ${activeTab === 'expense'
+                                className={`flex-1 py-3 px-2 sm:px-3 rounded-2xl font-bold text-xs sm:text-sm tracking-wider transition-all duration-300 flex items-center justify-center space-x-1 cursor-pointer ${activeTab === 'expense'
                                     ? 'bg-pink-500 text-white shadow-md scale-[1.02]'
                                     : 'text-gray-500 hover:text-pink-500 bg-transparent'
                                     }`}
@@ -1214,7 +2424,7 @@
                             </button>
                             <button
                                 onClick={() => setActiveTab('wine')}
-                                className={`flex-1 py-3 px-4 rounded-2xl font-bold text-sm tracking-widest transition-all duration-300 flex items-center justify-center space-x-1 cursor-pointer ${activeTab === 'wine'
+                                className={`flex-1 py-3 px-2 sm:px-3 rounded-2xl font-bold text-xs sm:text-sm tracking-wider transition-all duration-300 flex items-center justify-center space-x-1 cursor-pointer ${activeTab === 'wine'
                                     ? 'bg-amber-900 text-white shadow-md scale-[1.02]'
                                     : 'text-gray-600 hover:text-amber-900 bg-transparent'
                                     }`}
@@ -1222,39 +2432,63 @@
                                 <span>🍺</span>
                                 <span>微醺時光</span>
                             </button>
+                            <button
+                                onClick={() => setActiveTab('period')}
+                                className={`flex-1 py-3 px-2 sm:px-3 rounded-2xl font-bold text-xs sm:text-sm tracking-wider transition-all duration-300 flex items-center justify-center space-x-1 cursor-pointer ${activeTab === 'period'
+                                    ? 'bg-rose-600 text-white shadow-md scale-[1.02]'
+                                    : 'text-gray-600 hover:text-rose-600 bg-transparent'
+                                    }`}
+                            >
+                                <span>🌸</span>
+                                <span>生理期日誌</span>
+                            </button>
                         </div>
                     </header>
 
                     <main className="flex-1">
-                        {activeTab === 'expense' ? <ExpenseApp apiToken={apiToken} /> : <WineApp apiToken={apiToken} />}
+                        {activeTab === 'expense' && <ExpenseApp apiToken={apiToken} />}
+                        {activeTab === 'wine' && <WineApp apiToken={apiToken} />}
+                        {activeTab === 'period' && <PeriodApp />}
                     </main>
                 </div>
             );
         };
 
-        // 終極錯誤防護罩
         try {
             ReactDOM.createRoot(document.getElementById('root')).render(<App />);
         } catch (error) {
-            document.body.innerHTML = `<div style="padding: 2rem; color: #E91E63; font-weight: bold; text-align: center; font-size: 1.2rem;"><h2>React 渲染失敗</h2><p>${error.message}</p></div>`;
+            document.body.innerHTML = `<div style="padding: 2rem; color: #E11D48; font-weight: bold; text-align: center; font-size: 1.2rem;"><h2>React 渲染失敗</h2><p>${error.message}</p></div>`;
             console.error(error);
         }
     </script>
 
     <script>
-        // 強制清理 Service Worker 快取
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                for(let registration of registrations) {
-                    registration.unregister();
-                }
-            });
-        }
-        if ('caches' in window) {
-            caches.keys().then((keyList) => {
-                return Promise.all(keyList.map((key) => caches.delete(key)));
-            }).then(() => console.log('👻 快取已徹底清除！'));
-        }
+        // 安全清理 Service Worker 快取，防範 iframe 容器中 invalid state 錯誤
+        try {
+            if (typeof window !== 'undefined' && 'serviceWorker' in navigator && window.isSecureContext) {
+                window.addEventListener('load', function() {
+                    try {
+                        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                            if (registrations && registrations.length > 0) {
+                                for (let registration of registrations) {
+                                    registration.unregister().catch(() => {});
+                                }
+                            }
+                        }).catch(function(err) {
+                            // 靜默捕捉在受限環境/沙盒下的 InvalidStateError
+                        });
+                    } catch (e) {}
+                });
+            }
+        } catch (e) {}
+
+        try {
+            if ('caches' in window) {
+                caches.keys().then((keyList) => {
+                    return Promise.all(keyList.map((key) => caches.delete(key)));
+                }).catch(() => {});
+            }
+        } catch (e) {}
     </script>
 </body>
 
