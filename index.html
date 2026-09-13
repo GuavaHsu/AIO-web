@@ -1103,10 +1103,10 @@
             const [mergePrompt, setMergePrompt] = React.useState(null);
             const [nonConsecutiveNotice, setNonConsecutiveNotice] = React.useState(false);
 
-            // 雲端同步狀態: 'idle' | 'loading' | 'saving' | 'synced' | 'error'
+            // 雲端同步與初次載入鎖定狀態
+            const [isInitialLoading, setIsInitialLoading] = React.useState(!!apiToken);
             const [cloudStatus, setCloudStatus] = React.useState('idle');
             const [lastCloudSyncTime, setLastCloudSyncTime] = React.useState(null);
-            const [syncMergeNotice, setSyncMergeNotice] = React.useState(null);
 
             const [backupNotice, setBackupNotice] = React.useState(null);
             const [showRestoreModal, setShowRestoreModal] = React.useState(false);
@@ -1180,35 +1180,6 @@
                 return merged;
             }, []);
 
-            // --- 智慧防衝突合併輔助函式 ---
-            const mergeNotesSmart = (localN, cloudN) => {
-                const allKeys = new Set([...Object.keys(localN || {}), ...Object.keys(cloudN || {})]);
-                const res = {};
-                for (const d of allKeys) {
-                    const l = localN?.[d];
-                    const c = cloudN?.[d];
-                    if (!l) { res[d] = c; continue; }
-                    if (!c) { res[d] = l; continue; }
-                    // 兩端當日皆有紀錄：圖示取聯集，文字智慧串接
-                    const mergedIcons = Array.from(new Set([...(l.icons || []), ...(c.icons || [])]));
-                    let mergedText = "";
-                    if (l.note && c.note) {
-                        if (l.note === c.note) mergedText = l.note;
-                        else if (l.note.includes(c.note)) mergedText = l.note;
-                        else if (c.note.includes(l.note)) mergedText = c.note;
-                        else mergedText = `${l.note} / ${c.note}`;
-                    } else {
-                        mergedText = l.note || c.note || "";
-                    }
-                    res[d] = { icons: mergedIcons, note: mergedText };
-                }
-                return res;
-            };
-
-            const mergePeriodsSmart = React.useCallback((localP, cloudP) => {
-                return cleanAndMergePeriods([...(localP || []), ...(cloudP || [])]);
-            }, [cleanAndMergePeriods]);
-
             // --- 雲端試算表儲存 (POST) ---
             const saveToCloud = React.useCallback((updatedPeriods, updatedNotes, updatedSettings) => {
                 if (!apiUrl || !apiToken) return;
@@ -1217,18 +1188,22 @@
                 const nowTs = Date.now();
                 safeStorage.setItem('period_local_updated_at', String(nowTs));
 
+                const targetPeriods = updatedPeriods !== undefined ? updatedPeriods : periods;
+                const targetNotes = updatedNotes !== undefined ? updatedNotes : notes;
+                const targetSettings = updatedSettings !== undefined ? updatedSettings : {
+                    useDefaultParams,
+                    cycleLength,
+                    periodDuration,
+                    showFertileWindow
+                };
+
                 const payload = {
                     type: 'period',
                     api_token: apiToken,
                     updatedAt: nowTs,
-                    periods: updatedPeriods !== undefined ? updatedPeriods : periods,
-                    notes: updatedNotes !== undefined ? updatedNotes : notes,
-                    settings: updatedSettings !== undefined ? updatedSettings : {
-                        useDefaultParams,
-                        cycleLength,
-                        periodDuration,
-                        showFertileWindow
-                    }
+                    periods: targetPeriods,
+                    notes: targetNotes,
+                    settings: targetSettings
                 };
 
                 fetch(apiUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload), keepalive: true })
@@ -1242,57 +1217,68 @@
                     });
             }, [apiUrl, apiToken, periods, notes, useDefaultParams, cycleLength, periodDuration, showFertileWindow]);
 
-            // --- 雲端試算表讀取與防衝突智慧合併 (GET JSONP) ---
+            // --- 雲端試算表讀取 (依時間戳判定最新狀態，絕不聯集復活已刪除資料) ---
             const fetchFromCloud = React.useCallback(() => {
-                if (!apiUrl || !apiToken) return;
+                if (!apiUrl || !apiToken) {
+                    setIsInitialLoading(false);
+                    return;
+                }
                 setCloudStatus('loading');
 
                 const callbackName = 'onGetPeriodResult_' + Date.now();
                 let isHandled = false;
 
+                // 安全逾時防護 (超過 6 秒自動解鎖)
+                const timeoutId = setTimeout(() => {
+                    if (!isHandled) {
+                        isHandled = true;
+                        setIsInitialLoading(false);
+                        setCloudStatus('synced');
+                    }
+                }, 6000);
+
                 window[callbackName] = (res) => {
+                    if (isHandled) return;
                     isHandled = true;
+                    clearTimeout(timeoutId);
+
                     if (res && res.status === 'success' && res.data) {
                         const cloudData = res.data;
-                        const cloudTimestamp = Number(cloudData.updatedAt || (res.updatedAt ? new Date(res.updatedAt).getTime() : 0));
+                        const cloudTimestamp = Number(cloudData.updatedAt || 0);
                         const localTimestamp = Number(safeStorage.getItem('period_local_updated_at') || 0);
 
-                        // 讀取當前最新本地記錄
+                        // 讀取當前本機記錄
                         const localSavedP = safeStorage.getItem('period_ranges_v4');
                         const currentLocalP = localSavedP ? JSON.parse(localSavedP) : periods;
                         const localSavedN = safeStorage.getItem('period_notes_v4');
                         const currentLocalN = localSavedN ? JSON.parse(localSavedN) : notes;
 
-                        // 執行雙向無損智慧合併 (Smart Merge)
-                        const mergedPeriods = mergePeriodsSmart(currentLocalP, cloudData.periods || []);
-                        const mergedNotes = mergeNotesSmart(currentLocalN, cloudData.notes || {});
+                        // 關鍵：依時間戳決定採用雲端或推送本地，不使用聯集合併避免已刪除資料復活
+                        if (cloudTimestamp >= localTimestamp) {
+                            // 雲端較新或初次在新裝置載入：以雲端為主
+                            const cleanedCloudPeriods = cleanAndMergePeriods(cloudData.periods || []);
+                            const cloudNotes = cloudData.notes || {};
+                            setPeriods(cleanedCloudPeriods);
+                            setNotes(cloudNotes);
+                            safeStorage.setItem('period_ranges_v4', JSON.stringify(cleanedCloudPeriods));
+                            safeStorage.setItem('period_notes_v4', JSON.stringify(cloudNotes));
+                            safeStorage.setItem('period_local_updated_at', String(cloudTimestamp));
 
-                        setPeriods(mergedPeriods);
-                        setNotes(mergedNotes);
-
-                        // 設定參數：若雲端時間戳記較新或相等，優先採用雲端設定
-                        if (cloudData.settings && cloudTimestamp >= localTimestamp) {
-                            if (typeof cloudData.settings.useDefaultParams === 'boolean') setUseDefaultParams(cloudData.settings.useDefaultParams);
-                            if (cloudData.settings.cycleLength) setCycleLength(Number(cloudData.settings.cycleLength));
-                            if (cloudData.settings.periodDuration) setPeriodDuration(Number(cloudData.settings.periodDuration));
-                            if (typeof cloudData.settings.showFertileWindow === 'boolean') setShowFertileWindow(cloudData.settings.showFertileWindow);
+                            if (cloudData.settings) {
+                                if (typeof cloudData.settings.useDefaultParams === 'boolean') setUseDefaultParams(cloudData.settings.useDefaultParams);
+                                if (cloudData.settings.cycleLength) setCycleLength(Number(cloudData.settings.cycleLength));
+                                if (cloudData.settings.periodDuration) setPeriodDuration(Number(cloudData.settings.periodDuration));
+                                if (typeof cloudData.settings.showFertileWindow === 'boolean') setShowFertileWindow(cloudData.settings.showFertileWindow);
+                            }
+                        } else {
+                            // 本地較新 (離線曾修改)：將本地最新版本推送到雲端
+                            saveToCloud(currentLocalP, currentLocalN);
                         }
 
                         setCloudStatus('synced');
                         if (res.updatedAt) setLastCloudSyncTime(res.updatedAt);
-
-                        // 比對：若合併後包含本機的新資料，自動將合併後的完整版本推回雲端
-                        const isDifferentFromCloud = 
-                            JSON.stringify(mergedPeriods) !== JSON.stringify(cloudData.periods || []) ||
-                            JSON.stringify(mergedNotes) !== JSON.stringify(cloudData.notes || {});
-
-                        if (isDifferentFromCloud) {
-                            saveToCloud(mergedPeriods, mergedNotes);
-                            setSyncMergeNotice("已自動整合本地與雲端最新紀錄");
-                            setTimeout(() => setSyncMergeNotice(null), 3500);
-                        }
                     } else if (res && res.status === 'success' && !res.data) {
-                        // 雲端尚無資料，自動將本機資料推上雲端初始化
+                        // 雲端尚無資料：將本機現有資料初始化推上雲端
                         if (periods.length > 0 || Object.keys(notes).length > 0) {
                             saveToCloud(periods, notes);
                         }
@@ -1300,6 +1286,8 @@
                     } else {
                         setCloudStatus('synced');
                     }
+
+                    setIsInitialLoading(false);
                     delete window[callbackName];
                     const s = document.getElementById(callbackName);
                     if (s) s.remove();
@@ -1310,6 +1298,9 @@
                 script.src = `${apiUrl}?action=getPeriodData&id=${encodeURIComponent(apiToken)}&api_token=${encodeURIComponent(apiToken)}&callback=${callbackName}&_t=${Date.now()}`;
                 script.onerror = () => {
                     if (!isHandled) {
+                        isHandled = true;
+                        clearTimeout(timeoutId);
+                        setIsInitialLoading(false);
                         setCloudStatus('error');
                         if (window[callbackName]) delete window[callbackName];
                         const s = document.getElementById(callbackName);
@@ -1317,9 +1308,9 @@
                     }
                 };
                 document.body.appendChild(script);
-            }, [apiUrl, apiToken, periods, notes, mergePeriodsSmart, saveToCloud]);
+            }, [apiUrl, apiToken, periods, notes, cleanAndMergePeriods, saveToCloud]);
 
-            // 首次載入時自動從雲端拉取
+            // 首次載入時自動從雲端拉取最新資料
             React.useEffect(() => {
                 fetchFromCloud();
             }, [fetchFromCloud]);
@@ -1394,6 +1385,7 @@
             }, [periods, cycleLength, periodDuration, useDefaultParams, stats]);
 
             const handleDateClick = (dateStr) => {
+                if (isInitialLoading) return;
                 setNonConsecutiveNotice(false);
                 setSelectedDates(prev => {
                     if (prev.includes(dateStr)) {
@@ -1426,7 +1418,6 @@
                 return periods.find(p => dateStr >= p.start && dateStr <= p.end) || null;
             };
 
-            // 判斷所選日期是否全部皆為經期（供反點解除經期判定）
             const isAllSelectedInPeriod = sortedSelectedDates.length > 0 && sortedSelectedDates.every(d => getPeriodAtDate(d) !== null);
 
             const hasAnyDeletableContent = sortedSelectedDates.some(d => {
@@ -1462,12 +1453,14 @@
             };
 
             const handleCellMouseDown = (dateStr) => {
+                if (isInitialLoading) return;
                 isMouseDownRef.current = true;
                 dragStartRef.current = dateStr;
                 hasDraggedRef.current = false;
             };
 
             const handleCellMouseEnter = (dateStr) => {
+                if (isInitialLoading) return;
                 if (!isMouseDownRef.current || !dragStartRef.current) return;
                 if (dateStr === dragStartRef.current) return;
 
@@ -1489,13 +1482,13 @@
             };
 
             const selectToday = () => {
+                if (isInitialLoading) return;
                 const todayStr = toDateStr(today);
                 setViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
                 setSelectedDates([todayStr]);
                 setNonConsecutiveNotice(false);
             };
 
-            // 僅從經期區間中扣除指定日期，保留備註與圖示
             const removeDatesFromPeriods = (datesToRemove) => {
                 let currentPeriods = [...periods];
                 for (const dateStr of datesToRemove) {
@@ -1536,9 +1529,8 @@
             };
 
             const handlePeriodClick = () => {
-                if (sortedSelectedDates.length === 0) return;
+                if (isInitialLoading || sortedSelectedDates.length === 0) return;
 
-                // 若所選取的日期本來就是經期 -> 反點：單純解除/扣除經期，保留所有文字備忘與症狀圖示！
                 if (isAllSelectedInPeriod) {
                     removeDatesFromPeriods(sortedSelectedDates);
                     return;
@@ -1613,7 +1605,7 @@
             };
 
             const handleDeleteSelected = () => {
-                if (sortedSelectedDates.length === 0) return;
+                if (isInitialLoading || sortedSelectedDates.length === 0) return;
                 setNonConsecutiveNotice(false);
 
                 const nextNotes = { ...notes };
@@ -1657,11 +1649,13 @@
 
                 const nextMerged = cleanAndMergePeriods(currentPeriods);
                 setPeriods(nextMerged);
+                // 立即更新雲端，雲端直接保存刪除後的全新狀態
                 saveToCloud(nextMerged, nextNotes);
                 setSelectedDates([]);
             };
 
             const toggleNoteIconBatch = (iconId) => {
+                if (isInitialLoading) return;
                 const nextNotes = { ...notes };
                 const allHave = sortedSelectedDates.every(d => nextNotes[d]?.icons?.includes(iconId));
 
@@ -1682,6 +1676,7 @@
             };
 
             const updateNoteTextBatch = (text) => {
+                if (isInitialLoading) return;
                 const nextNotes = { ...notes };
                 sortedSelectedDates.forEach(d => {
                     const cur = nextNotes[d] || { icons: [], note: "" };
@@ -1755,18 +1750,33 @@
                     if (!data || (!data.periods && !data.notes)) {
                         throw new Error("格式不正確");
                     }
-                    if (Array.isArray(data.periods)) {
-                        setPeriods(cleanAndMergePeriods(data.periods));
-                    }
-                    if (data.notes && typeof data.notes === 'object') {
-                        setNotes(data.notes);
-                    }
+                    const nextP = Array.isArray(data.periods) ? cleanAndMergePeriods(data.periods) : periods;
+                    const nextN = (data.notes && typeof data.notes === 'object') ? data.notes : notes;
+
+                    setPeriods(nextP);
+                    setNotes(nextN);
+
+                    let nextSettings = { useDefaultParams, cycleLength, periodDuration, showFertileWindow };
                     if (data.settings) {
-                        if (typeof data.settings.useDefaultParams === 'boolean') setUseDefaultParams(data.settings.useDefaultParams);
-                        if (data.settings.cycleLength) setCycleLength(Number(data.settings.cycleLength));
-                        if (data.settings.periodDuration) setPeriodDuration(Number(data.settings.periodDuration));
-                        if (typeof data.settings.showFertileWindow === 'boolean') setShowFertileWindow(data.settings.showFertileWindow);
+                        if (typeof data.settings.useDefaultParams === 'boolean') {
+                            setUseDefaultParams(data.settings.useDefaultParams);
+                            nextSettings.useDefaultParams = data.settings.useDefaultParams;
+                        }
+                        if (data.settings.cycleLength) {
+                            setCycleLength(Number(data.settings.cycleLength));
+                            nextSettings.cycleLength = Number(data.settings.cycleLength);
+                        }
+                        if (data.settings.periodDuration) {
+                            setPeriodDuration(Number(data.settings.periodDuration));
+                            nextSettings.periodDuration = Number(data.settings.periodDuration);
+                        }
+                        if (typeof data.settings.showFertileWindow === 'boolean') {
+                            setShowFertileWindow(data.settings.showFertileWindow);
+                            nextSettings.showFertileWindow = data.settings.showFertileWindow;
+                        }
                     }
+
+                    saveToCloud(nextP, nextN, nextSettings);
                     setShowRestoreModal(false);
                     setRestoreText("");
                     setBackupNotice({ type: 'success', text: '備份資料還原成功！' });
@@ -1793,11 +1803,13 @@
             const firstDayOfMonth = new Date(year, month, 1).getDay();
 
             const prevMonth = () => {
+                if (isInitialLoading) return;
                 setSlideDir("slide-right");
                 setViewDate(new Date(year, month - 1, 1));
             };
 
             const nextMonth = () => {
+                if (isInitialLoading) return;
                 setSlideDir("slide-left");
                 setViewDate(new Date(year, month + 1, 1));
             };
@@ -1811,6 +1823,7 @@
             };
 
             const handleTouchEnd = (e) => {
+                if (isInitialLoading) return;
                 const deltaX = e.changedTouches[0].clientX - touchStartX.current;
                 const deltaY = e.changedTouches[0].clientY - touchStartY.current;
                 if (Math.abs(deltaX) > 45 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
@@ -1845,6 +1858,7 @@
                                 {apiToken && (
                                     <button
                                         type="button"
+                                        disabled={isInitialLoading}
                                         onClick={fetchFromCloud}
                                         title={cloudStatus === 'loading' ? '正在讀取雲端...' : cloudStatus === 'saving' ? '正在同步至雲端...' : '點擊手動同步雲端'}
                                         className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all active:scale-95 cursor-pointer ${
@@ -1857,13 +1871,13 @@
                                     >
                                         <Icon name={cloudStatus === 'loading' || cloudStatus === 'saving' ? "Loader" : "Cloud"} className="w-3 h-3" />
                                         <span>
-                                            {cloudStatus === 'loading' ? '讀取中' : cloudStatus === 'saving' ? '同步中' : '雲端同步'}
+                                            {cloudStatus === 'loading' ? '載入中' : cloudStatus === 'saving' ? '同步中' : '雲端同步'}
                                         </span>
                                     </button>
                                 )}
                             </div>
                             <p className="text-xs text-gray-400 font-medium mt-0.5">
-                                {lastCloudSyncTime ? `上次同步：${lastCloudSyncTime}` : '預測經期與日常症狀追蹤'}
+                                {isInitialLoading ? '正在與雲端確認最新紀錄...' : (lastCloudSyncTime ? `上次同步：${lastCloudSyncTime}` : '預測經期與日常症狀追蹤')}
                             </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -2078,7 +2092,7 @@
                         </div>
                     )}
 
-                    {/* 未綁定金鑰提示列 (支援在新裝置一鍵綁定) */}
+                    {/* 未綁定金鑰提示列 */}
                     {!apiToken && (
                         <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-2xl text-amber-900 text-xs font-bold flex items-center justify-between animate-in fade-in">
                             <div className="flex items-center gap-1.5">
@@ -2101,31 +2115,21 @@
                         </div>
                     )}
 
-                    {/* 自動合併提示條 */}
-                    {syncMergeNotice && (
-                        <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs font-bold flex items-center justify-between animate-in fade-in">
-                            <div className="flex items-center gap-1.5">
-                                <span>✨</span>
-                                <span>{syncMergeNotice}</span>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setSyncMergeNotice(null)}
-                                className="text-emerald-500 hover:text-emerald-700 font-black text-xs"
-                            >
-                                ✕
-                            </button>
-                        </div>
-                    )}
-
-                    {/* 月曆卡片區塊 */}
+                    {/* 月曆卡片區塊 (含載入中保護遮罩) */}
                     <div
-                        className="bg-white rounded-3xl p-5 shadow-sm mb-4"
+                        className="bg-white rounded-3xl p-5 shadow-sm mb-4 relative"
                         onTouchStart={handleTouchStart}
                         onTouchEnd={handleTouchEnd}
                     >
+                        {isInitialLoading && (
+                            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-30 rounded-3xl flex flex-col items-center justify-center space-y-3 animate-in fade-in">
+                                <Icon name="Loader" className="w-8 h-8 text-rose-600 animate-spin" />
+                                <div className="text-xs font-bold text-rose-700">正在確認雲端最新資料...</div>
+                            </div>
+                        )}
+
                         <div className="flex justify-between items-center mb-4 px-2">
-                            <button onClick={prevMonth} className="p-2 hover:bg-rose-50 text-rose-600 rounded-full active:scale-90 transition-all">
+                            <button onClick={prevMonth} disabled={isInitialLoading} className="p-2 hover:bg-rose-50 text-rose-600 rounded-full active:scale-90 transition-all disabled:opacity-40">
                                 <Icon name="ChevronLeft" className="w-5 h-5" />
                             </button>
                             <div className="flex items-center gap-2">
@@ -2134,14 +2138,15 @@
                                 </h2>
                                 <button
                                     type="button"
+                                    disabled={isInitialLoading}
                                     onClick={selectToday}
-                                    className="text-[11px] bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold px-2 py-0.5 rounded-lg active:scale-95 transition-all cursor-pointer"
+                                    className="text-[11px] bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold px-2 py-0.5 rounded-lg active:scale-95 transition-all cursor-pointer disabled:opacity-40"
                                     title="點選自動切換並選取今天"
                                 >
                                     今天
                                 </button>
                             </div>
-                            <button onClick={nextMonth} className="p-2 hover:bg-rose-50 text-rose-600 rounded-full active:scale-90 transition-all">
+                            <button onClick={nextMonth} disabled={isInitialLoading} className="p-2 hover:bg-rose-50 text-rose-600 rounded-full active:scale-90 transition-all disabled:opacity-40">
                                 <Icon name="ChevronRight" className="w-5 h-5" />
                             </button>
                         </div>
@@ -2175,6 +2180,7 @@
                                     <button
                                         key={dateStr}
                                         type="button"
+                                        disabled={isInitialLoading}
                                         onMouseDown={() => handleCellMouseDown(dateStr)}
                                         onMouseEnter={() => handleCellMouseEnter(dateStr)}
                                         onClick={() => {
@@ -2256,9 +2262,9 @@
                             <button
                                 type="button"
                                 onClick={handlePeriodClick}
-                                disabled={sortedSelectedDates.length === 0 || (!isAllSelectedInPeriod && sortedSelectedDates.length > 1 && !isConsecutive)}
+                                disabled={isInitialLoading || sortedSelectedDates.length === 0 || (!isAllSelectedInPeriod && sortedSelectedDates.length > 1 && !isConsecutive)}
                                 className={`py-3.5 rounded-2xl text-xs sm:text-sm font-black transition-all shadow-sm flex items-center justify-center gap-1.5 ${
-                                    sortedSelectedDates.length === 0 || (!isAllSelectedInPeriod && sortedSelectedDates.length > 1 && !isConsecutive)
+                                    isInitialLoading || sortedSelectedDates.length === 0 || (!isAllSelectedInPeriod && sortedSelectedDates.length > 1 && !isConsecutive)
                                         ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
                                         : isAllSelectedInPeriod
                                             ? 'bg-rose-100 text-red-600 hover:bg-rose-200 active:scale-95 border border-red-300'
@@ -2271,9 +2277,9 @@
                             <button
                                 type="button"
                                 onClick={handleDeleteSelected}
-                                disabled={!hasAnyDeletableContent}
+                                disabled={isInitialLoading || !hasAnyDeletableContent}
                                 className={`py-3.5 rounded-2xl text-xs sm:text-sm font-black transition-all shadow-sm flex items-center justify-center gap-1.5 ${
-                                    !hasAnyDeletableContent
+                                    isInitialLoading || !hasAnyDeletableContent
                                         ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
                                         : 'bg-red-50 hover:bg-red-100 text-red-600 active:scale-95'
                                 }`}
@@ -2287,9 +2293,9 @@
                                     setSelectedDates([]);
                                     setNonConsecutiveNotice(false);
                                 }}
-                                disabled={sortedSelectedDates.length === 0}
+                                disabled={isInitialLoading || sortedSelectedDates.length === 0}
                                 className={`py-3.5 rounded-2xl text-xs sm:text-sm font-black transition-all shadow-sm flex items-center justify-center gap-1.5 ${
-                                    sortedSelectedDates.length === 0
+                                    isInitialLoading || sortedSelectedDates.length === 0
                                         ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
                                         : 'bg-gray-100 hover:bg-gray-200 text-gray-600 active:scale-95'
                                 }`}
@@ -2306,10 +2312,10 @@
                                     <button
                                         key={item.id}
                                         type="button"
-                                        disabled={sortedSelectedDates.length === 0}
+                                        disabled={isInitialLoading || sortedSelectedDates.length === 0}
                                         onClick={() => toggleNoteIconBatch(item.id)}
                                         className={`p-4 rounded-2xl border text-center transition-all flex flex-col items-center gap-1.5 ${
-                                            sortedSelectedDates.length === 0
+                                            isInitialLoading || sortedSelectedDates.length === 0
                                                 ? 'bg-gray-50 border-gray-50 text-gray-300 opacity-60 cursor-not-allowed'
                                                 : isChecked
                                                     ? 'bg-rose-100 border-rose-400 text-rose-800 font-bold shadow-sm active:scale-90'
@@ -2329,13 +2335,13 @@
                             </div>
                             <textarea
                                 rows="2"
-                                placeholder={sortedSelectedDates.length === 0 ? "請先點選日期以記錄備忘..." : "寫下身體狀況或備忘..."}
-                                disabled={sortedSelectedDates.length === 0}
+                                placeholder={isInitialLoading ? "正在載入雲端資料..." : (sortedSelectedDates.length === 0 ? "請先點選日期以記錄備忘..." : "寫下身體狀況或備忘...")}
+                                disabled={isInitialLoading || sortedSelectedDates.length === 0}
                                 value={primaryDateStr ? (notes[primaryDateStr]?.note || "") : ""}
                                 onChange={(e) => updateNoteTextBatch(e.target.value)}
                                 onBlur={() => saveToCloud(periods, notes)}
                                 className={`w-full bg-rose-50/40 border border-rose-100 rounded-2xl p-3 text-sm text-gray-700 outline-none focus:border-rose-400 focus:bg-white transition-all resize-none ${
-                                    sortedSelectedDates.length === 0 ? 'opacity-60 cursor-not-allowed' : ''
+                                    isInitialLoading || sortedSelectedDates.length === 0 ? 'opacity-60 cursor-not-allowed' : ''
                                 }`}
                             ></textarea>
                         </div>
