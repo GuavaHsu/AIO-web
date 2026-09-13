@@ -2509,10 +2509,10 @@
             const expenseApiUrl = 'https://script.google.com/macros/s/AKfycbxyB9Z2sJHxJ3533aqEYnCxMecQShD5nUBBsfYsJpgeM2aPOXTMKU44gwM8IS7M9eYU/exec';
             const wineApiUrl = 'https://script.google.com/macros/s/AKfycbylZOr-mY4m822xXNBZgp7uAaeJ_6eT-ZxwZYc9YGNdweiyz5x7l0U8ekSaY9_9MVrP/exec';
             
-            // 加入 isSilent 參數：若為快取秒開驗證，完全不阻擋畫面，背景默默執行確認
+            // 雙向相容驗證：優先驗證含有「生理期與微醺」的伺服器，若未過再驗證記帳伺服器（嚴格區分大小寫）
             const verifyToken = React.useCallback((idToVerify, isSilent = false) => {
                 if (!idToVerify) return;
-                const cleanedId = idToVerify.replace(/["']/g, "").trim();
+                const cleanedId = idToVerify.toString().replace(/["']/g, "").trim();
                 if (!isSilent) {
                     setAuthStatus('loading');
                 }
@@ -2520,41 +2520,82 @@
 
                 let isMounted = true;
                 let timeoutId;
+                let triedExpense = false;
+
+                const cleanupScripts = () => {
+                    const s1 = document.getElementById('v-script-shared');
+                    if (s1) s1.remove();
+                    const s2 = document.getElementById('v-script-fallback');
+                    if (s2) s2.remove();
+                };
 
                 window.onVerifySharedResult = (res) => {
                     if (!isMounted) return;
-                    if (timeoutId) clearTimeout(timeoutId);
                     if (res && res.auth === 'OK') {
+                        if (timeoutId) clearTimeout(timeoutId);
+                        cleanupScripts();
                         setApiToken(cleanedId);
                         safeStorage.setItem('api_token_id', cleanedId);
-                        safeStorage.setItem('api_token_verified', cleanedId); // 記錄驗證成功快取標記
+                        safeStorage.setItem('api_token_verified', cleanedId);
                         setTimeout(() => { if (isMounted) setAuthStatus('authorized'); }, 50);
-                    } else {
+                        return;
+                    }
+
+                    // 若微醺伺服器未通過，自動備援查詢記帳伺服器
+                    if (!triedExpense) {
+                        triedExpense = true;
+                        cleanupScripts();
+                        const fallbackScript = document.createElement('script');
+                        fallbackScript.id = 'v-script-fallback';
+                        fallbackScript.src = `${expenseApiUrl}?action=verify&id=${encodeURIComponent(cleanedId)}&callback=onVerifySharedResult&_t=${Date.now()}`;
+                        fallbackScript.onerror = () => {
+                            if (!isMounted) return;
+                            if (timeoutId) clearTimeout(timeoutId);
+                            cleanupScripts();
+                            if (!isSilent) {
+                                setAuthStatus('denied');
+                                setAuthErrorMsg('驗證失敗，請確認金鑰是否正確（大小寫需完全相符）！');
+                            }
+                        };
+                        document.body.appendChild(fallbackScript);
+                        return;
+                    }
+
+                    if (timeoutId) clearTimeout(timeoutId);
+                    cleanupScripts();
+                    if (!isSilent) {
                         safeStorage.removeItem('api_token_id');
                         safeStorage.removeItem('api_token_verified');
-                        if (isMounted) {
-                            setAuthStatus('denied');
-                            setAuthErrorMsg('驗證失敗，請確認金鑰是否正確！');
-                        }
+                        setAuthStatus('denied');
+                        setAuthErrorMsg('驗證失敗，請確認金鑰大小寫是否正確！');
                     }
-                    const s = document.getElementById('v-script-shared');
-                    if (s) s.remove();
                 };
 
                 timeoutId = setTimeout(() => {
                     if (isMounted && !isSilent) {
+                        cleanupScripts();
                         setAuthStatus('denied');
-                        setAuthErrorMsg('連線逾時，請檢查網路連線或稍後再試！');
+                        setAuthErrorMsg('連線逾時，請檢查 Google Apps Script 部署版本與網路！');
                     }
-                    const s = document.getElementById('v-script-shared');
-                    if (s) s.remove();
                 }, 8000);
 
+                cleanupScripts();
+                // 優先連線至包含「微醺與生理期」的 wineApiUrl 進行驗證
                 const script = document.createElement('script');
                 script.id = 'v-script-shared';
-                script.src = `${expenseApiUrl}?action=verify&id=${encodeURIComponent(cleanedId)}&callback=onVerifySharedResult&_t=${Date.now()}`;
+                script.src = `${wineApiUrl}?action=verify&id=${encodeURIComponent(cleanedId)}&callback=onVerifySharedResult&_t=${Date.now()}`;
+                script.onerror = () => {
+                    if (!triedExpense && isMounted) {
+                        triedExpense = true;
+                        cleanupScripts();
+                        const fallbackScript = document.createElement('script');
+                        fallbackScript.id = 'v-script-fallback';
+                        fallbackScript.src = `${expenseApiUrl}?action=verify&id=${encodeURIComponent(cleanedId)}&callback=onVerifySharedResult&_t=${Date.now()}`;
+                        document.body.appendChild(fallbackScript);
+                    }
+                };
                 document.body.appendChild(script);
-            }, [expenseApiUrl]);
+            }, [wineApiUrl, expenseApiUrl]);
 
             React.useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
