@@ -1216,7 +1216,13 @@
                     });
             }, [apiUrl, apiToken, periods, notes, useDefaultParams, cycleLength, periodDuration, showFertileWindow]);
 
-            // --- 雲端試算表讀取 (支援伺服器 RAM 快取秒讀) ---
+            // 用 Ref 保持 saveToCloud 的引用，避免 fetchFromCloud 造成循環依賴
+            const saveToCloudRef = React.useRef(saveToCloud);
+            React.useEffect(() => {
+                saveToCloudRef.current = saveToCloud;
+            }, [saveToCloud]);
+
+            // --- 雲端試算表讀取 (修正依賴與逾時，徹底消除卡在載入中的問題) ---
             const fetchFromCloud = React.useCallback(() => {
                 if (!apiUrl || !apiToken) return;
                 setCloudStatus('loading');
@@ -1224,12 +1230,16 @@
                 const callbackName = 'onGetPeriodResult_' + Date.now();
                 let isHandled = false;
 
+                // 逾時安全防護：若 4.5 秒內未回應，自動還原狀態，不卡住使用者
                 const timeoutId = setTimeout(() => {
                     if (!isHandled) {
                         isHandled = true;
                         setCloudStatus('synced');
+                        const s = document.getElementById(callbackName);
+                        if (s) s.remove();
+                        if (window[callbackName]) delete window[callbackName];
                     }
-                }, 5000);
+                }, 4500);
 
                 window[callbackName] = (res) => {
                     if (isHandled) return;
@@ -1242,9 +1252,9 @@
                         const localTimestamp = Number(safeStorage.getItem('period_local_updated_at') || 0);
 
                         const localSavedP = safeStorage.getItem('period_ranges_v4');
-                        const currentLocalP = localSavedP ? JSON.parse(localSavedP) : periods;
+                        const currentLocalP = localSavedP ? JSON.parse(localSavedP) : [];
                         const localSavedN = safeStorage.getItem('period_notes_v4');
-                        const currentLocalN = localSavedN ? JSON.parse(localSavedN) : notes;
+                        const currentLocalN = localSavedN ? JSON.parse(localSavedN) : {};
 
                         if (cloudTimestamp >= localTimestamp) {
                             const cleanedCloudPeriods = cleanAndMergePeriods(cloudData.periods || []);
@@ -1262,14 +1272,22 @@
                                 if (typeof cloudData.settings.showFertileWindow === 'boolean') setShowFertileWindow(cloudData.settings.showFertileWindow);
                             }
                         } else {
-                            saveToCloud(currentLocalP, currentLocalN);
+                            if (saveToCloudRef.current) {
+                                saveToCloudRef.current(currentLocalP, currentLocalN);
+                            }
                         }
 
                         setCloudStatus('synced');
                         if (res.updatedAt) setLastCloudSyncTime(res.updatedAt);
                     } else if (res && res.status === 'success' && !res.data) {
-                        if (periods.length > 0 || Object.keys(notes).length > 0) {
-                            saveToCloud(periods, notes);
+                        const localSavedP = safeStorage.getItem('period_ranges_v4');
+                        const currentLocalP = localSavedP ? JSON.parse(localSavedP) : [];
+                        const localSavedN = safeStorage.getItem('period_notes_v4');
+                        const currentLocalN = localSavedN ? JSON.parse(localSavedN) : {};
+                        if (currentLocalP.length > 0 || Object.keys(currentLocalN).length > 0) {
+                            if (saveToCloudRef.current) {
+                                saveToCloudRef.current(currentLocalP, currentLocalN);
+                            }
                         }
                         setCloudStatus('synced');
                     } else {
@@ -1288,18 +1306,21 @@
                     if (!isHandled) {
                         isHandled = true;
                         clearTimeout(timeoutId);
-                        setCloudStatus('error');
+                        setCloudStatus('synced');
                         if (window[callbackName]) delete window[callbackName];
                         const s = document.getElementById(callbackName);
                         if (s) s.remove();
                     }
                 };
                 document.body.appendChild(script);
-            }, [apiUrl, apiToken, periods, notes, cleanAndMergePeriods, saveToCloud]);
+            }, [apiUrl, apiToken, cleanAndMergePeriods]);
 
+            // 僅在元件載入或 apiToken 變更時執行一次，不重入循環
             React.useEffect(() => {
-                fetchFromCloud();
-            }, [fetchFromCloud]);
+                if (apiToken) {
+                    fetchFromCloud();
+                }
+            }, [apiToken, fetchFromCloud]);
 
             const stats = React.useMemo(() => {
                 if (periods.length === 0) {
