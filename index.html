@@ -91,8 +91,13 @@
         // ==========================================
 
         const ExpenseCalendar = ({ selectedDate, onSelect, onClose }) => {
-            const dateObj = new Date(selectedDate);
-            const [viewDate, setViewDate] = React.useState(new Date(dateObj.getFullYear(), dateObj.getMonth(), 1));
+            // 透過字串直接拆解年月日，杜絕瀏覽器 new Date("YYYY-MM-DD") 的 UTC 時區跨月誤差
+            const dateParts = String(selectedDate || "").split(/[-/]/);
+            const initYear = dateParts.length >= 3 ? parseInt(dateParts[0], 10) : new Date().getFullYear();
+            const initMonth = dateParts.length >= 3 ? parseInt(dateParts[1], 10) - 1 : new Date().getMonth();
+            const initDay = dateParts.length >= 3 ? parseInt(dateParts[2], 10) : new Date().getDate();
+
+            const [viewDate, setViewDate] = React.useState(new Date(initYear, initMonth, 1));
             const year = viewDate.getFullYear();
             const month = viewDate.getMonth();
             const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -102,7 +107,7 @@
             const days = [];
             for (let i = 0; i < firstDayOfMonth; i++) days.push(null);
             for (let i = 1; i <= daysInMonth; i++) days.push(i);
-            const isSelected = (d) => d === dateObj.getDate() && month === dateObj.getMonth() && year === dateObj.getFullYear();
+            const isSelected = (d) => d === initDay && month === initMonth && year === initYear;
             const isToday = (d) => { const today = new Date(); return d === today.getDate() && month === today.getMonth() && year === today.getFullYear(); };
 
             return (
@@ -262,12 +267,39 @@
                 setShowDeleteConfirm(false);
                 setShowEditCalendar(false);
 
-                // row[1] 格式可能為 "2026/09" 或 "2026/9"，row[2] 為日
-                const ymParts = String(row[1] || "").split(/[\/-]/);
-                const y = ymParts[0] || new Date().getFullYear();
-                const m = String(ymParts[1] || "1").padStart(2, '0');
-                const d = String(row[2] || "1").padStart(2, '0');
-                const fullStr = `${y}-${m}-${d}`;
+                // 智慧解析年月與日：支援 Date 物件、ISO 字串、"2026/09" 或從 timestamp 提取，確保絕不跑掉月份
+                let y = new Date().getFullYear();
+                let m = String(new Date().getMonth() + 1).padStart(2, '0');
+                let d = String(row[2] || "1").trim();
+
+                const rawYM = String(row[1] || "").trim();
+                if (rawYM.includes('T') || rawYM.includes('Z')) {
+                    // 若收到 ISO 字串，以本地時間取出年月
+                    const dObj = new Date(rawYM);
+                    if (!isNaN(dObj.getTime())) {
+                        y = dObj.getFullYear();
+                        m = String(dObj.getMonth() + 1).padStart(2, '0');
+                    }
+                } else {
+                    const ymParts = rawYM.split(/[\/-]/);
+                    if (ymParts.length >= 2) {
+                        y = ymParts[0];
+                        m = String(ymParts[1]).padStart(2, '0');
+                    }
+                }
+
+                // 保險防呆：若 row[1] 解析有誤，從 row[0] (如 2026/9/16 下午 6:46:42) 提取正確年月
+                if (!y || !m || isNaN(Number(y)) || isNaN(Number(m))) {
+                    const tsStr = String(row[0] || "");
+                    const match = tsStr.match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+                    if (match) {
+                        y = match[1];
+                        m = String(match[2]).padStart(2, '0');
+                        if (!d || d === "1") d = match[3];
+                    }
+                }
+
+                const fullStr = `${y}-${m}-${String(Number(d)).padStart(2, '0')}`;
                 setEditDateStr(fullStr);
 
                 setEditForm({
@@ -305,7 +337,7 @@
                 const parts = newDate.split('-');
                 setEditForm(prev => ({
                     ...prev,
-                    yearMonth: `${parts[0]}/${parts[1]}`,
+                    yearMonth: `${parts[0]}/${parts[1].padStart(2, '0')}`,
                     day: String(Number(parts[2]))
                 }));
             };
