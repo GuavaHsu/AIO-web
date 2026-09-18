@@ -239,14 +239,22 @@
                 setEditDateStr(fullStr);
 
                 setEditForm({
-                    originalTimestamp: row[0],
+                    originalTimestamp: String(row[0]),
                     yearMonth: `${y}/${m}`,
                     day: String(Number(d)),
                     category: row[3],
                     content: row[4],
                     amount: row[5],
                     payment: row[6],
-                    user: row[7]
+                    user: row[7],
+                    // 保存原始完整資料，提供後端雙重定位保障
+                    oldData: {
+                        yearMonth: String(row[1]),
+                        day: String(row[2]),
+                        category: row[3],
+                        amount: row[5],
+                        user: row[7]
+                    }
                 });
             };
 
@@ -275,19 +283,20 @@
                     editForm.user
                 ];
 
-                setData(prev => prev ? prev.map(r => r[0] === editForm.originalTimestamp ? updatedRow : r) : []);
+                setData(prev => prev ? prev.map(r => String(r[0]) === String(editForm.originalTimestamp) ? updatedRow : r) : []);
 
                 const payload = {
                     action: 'update',
                     originalTimestamp: editForm.originalTimestamp,
-                    timestamp: editForm.originalTimestamp,
                     yearMonth: editForm.yearMonth,
+                    oldYearMonth: editForm.oldData?.yearMonth,
                     day: editForm.day,
                     category: editForm.category,
                     content: editForm.content,
                     amount: editForm.amount,
                     payment: editForm.payment,
                     user: editForm.user,
+                    oldData: editForm.oldData,
                     api_token: apiToken
                 };
 
@@ -309,12 +318,13 @@
                 if (!editForm) return;
                 setIsSavingEdit(true);
 
-                setData(prev => prev ? prev.filter(r => r[0] !== editForm.originalTimestamp) : []);
+                setData(prev => prev ? prev.filter(r => String(r[0]) !== String(editForm.originalTimestamp)) : []);
 
                 const payload = {
                     action: 'delete',
                     originalTimestamp: editForm.originalTimestamp,
                     yearMonth: editForm.yearMonth,
+                    oldData: editForm.oldData,
                     api_token: apiToken
                 };
 
