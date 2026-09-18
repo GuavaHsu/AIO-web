@@ -195,9 +195,41 @@
             const [showEditCalendar, setShowEditCalendar] = React.useState(false);
             const [isSavingEdit, setIsSavingEdit] = React.useState(false);
             const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+            const isModalPushedRef = React.useRef(false);
 
             const categories = ["食物", "日用", "交通", "車車", "衣物", "寵物", "電器", "運動", "教育", "娛樂", "醫療", "禮物", "其他"];
             const payments = ["現金", "現金-自", "信用卡", "信用卡-自"];
+
+            // 關閉編輯彈窗函式（若有推入上一頁歷史紀錄，同步 pop 出來）
+            const handleCloseEdit = React.useCallback(() => {
+                if (isModalPushedRef.current) {
+                    isModalPushedRef.current = false;
+                    if (typeof google !== 'undefined' && google.script && google.script.history) {
+                        google.script.history.back();
+                    } else {
+                        window.history.back();
+                    }
+                }
+                setEditingItem(null);
+                setEditForm(null);
+                setShowDeleteConfirm(false);
+                setShowEditCalendar(false);
+            }, []);
+
+            // 監聽手機系統返回事件：在編輯狀態下按上一頁，只關閉編輯狀態並停留在報表統計頁
+            React.useEffect(() => {
+                const handlePopState = () => {
+                    if (isModalPushedRef.current) {
+                        isModalPushedRef.current = false;
+                        setEditingItem(null);
+                        setEditForm(null);
+                        setShowDeleteConfirm(false);
+                        setShowEditCalendar(false);
+                    }
+                };
+                window.addEventListener('popstate', handlePopState);
+                return () => window.removeEventListener('popstate', handlePopState);
+            }, []);
 
             const handleQuery = () => {
                 setLoading(true);
@@ -256,6 +288,16 @@
                         user: row[7]
                     }
                 });
+
+                // 開啟編輯彈窗時推入一層瀏覽歷程，供手機返回按鈕攔截
+                if (!isModalPushedRef.current) {
+                    isModalPushedRef.current = true;
+                    if (typeof google !== 'undefined' && google.script && google.script.history) {
+                        google.script.history.push({ view: 'report', modal: 'editExpense' }, { id: apiToken }, 'report');
+                    } else {
+                        window.history.pushState({ view: 'report', modal: 'editExpense' }, '');
+                    }
+                }
             };
 
             const handleEditDateSelect = (newDate) => {
@@ -283,6 +325,7 @@
                     editForm.user
                 ];
 
+                // 立即在前端樂觀更新畫面
                 setData(prev => prev ? prev.map(r => String(r[0]) === String(editForm.originalTimestamp) ? updatedRow : r) : []);
 
                 const payload = {
@@ -307,10 +350,10 @@
                     keepalive: true
                 }).then(() => {
                     setIsSavingEdit(false);
-                    setEditingItem(null);
+                    handleCloseEdit();
                 }).catch(() => {
                     setIsSavingEdit(false);
-                    setEditingItem(null);
+                    handleCloseEdit();
                 });
             };
 
@@ -318,12 +361,14 @@
                 if (!editForm) return;
                 setIsSavingEdit(true);
 
+                // 立即在前端樂觀移除該筆
                 setData(prev => prev ? prev.filter(r => String(r[0]) !== String(editForm.originalTimestamp)) : []);
 
                 const payload = {
                     action: 'delete',
                     originalTimestamp: editForm.originalTimestamp,
                     yearMonth: editForm.yearMonth,
+                    oldYearMonth: editForm.oldData?.yearMonth,
                     oldData: editForm.oldData,
                     api_token: apiToken
                 };
@@ -335,12 +380,10 @@
                     keepalive: true
                 }).then(() => {
                     setIsSavingEdit(false);
-                    setEditingItem(null);
-                    setShowDeleteConfirm(false);
+                    handleCloseEdit();
                 }).catch(() => {
                     setIsSavingEdit(false);
-                    setEditingItem(null);
-                    setShowDeleteConfirm(false);
+                    handleCloseEdit();
                 });
             };
 
@@ -480,7 +523,7 @@
                                     </div>
                                     <button
                                         type="button"
-                                        onClick={() => setEditingItem(null)}
+                                        onClick={handleCloseEdit}
                                         className="w-8 h-8 rounded-full bg-pink-50 hover:bg-pink-100 text-pink-500 font-bold flex items-center justify-center cursor-pointer transition-all active:scale-95"
                                     >
                                         ✕
@@ -652,7 +695,7 @@
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => setEditingItem(null)}
+                                                onClick={handleCloseEdit}
                                                 className="py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl font-bold text-xs transition-all active:scale-95 cursor-pointer"
                                             >
                                                 取消
