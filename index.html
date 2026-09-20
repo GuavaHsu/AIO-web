@@ -437,27 +437,37 @@
             const grandTotal = tingTotal + shanTotal;
             const uniqueCategories = data ? Array.from(new Set(data.map(row => row[3]))) : [];
 
-            // 輔助函式：將中文上下午時間戳記（如 2026/9/16 下午 6:46:42 或 2026/9/16 18:46:42）轉換為可比較的毫秒數
+            // 輔助函式：正則精準解析時間戳記（支援 中文上下午、AM/PM、24小時制），轉換為可比對的毫秒數
             const parseTsToMillis = (tsStr) => {
                 if (!tsStr) return 0;
                 try {
-                    let s = String(tsStr).trim();
-                    let isPM = s.includes('下午');
-                    let isAM = s.includes('上午');
-                    s = s.replace(/上午|下午/g, '').trim();
-                    let parts = s.split(/\s+/);
-                    let datePart = parts[0] || "";
-                    let timePart = parts[1] || "00:00:00";
-                    let dArr = datePart.split(/[\/-]/).map(Number);
-                    let tArr = timePart.split(':').map(Number);
-                    if (dArr.length >= 3) {
-                        let hours = tArr[0] || 0;
+                    const s = String(tsStr).trim();
+                    // 1. 提取年月日
+                    const dateMatch = s.match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+                    if (!dateMatch) {
+                        const parsed = Date.parse(s);
+                        return isNaN(parsed) ? 0 : parsed;
+                    }
+                    const year = Number(dateMatch[1]);
+                    const month = Number(dateMatch[2]) - 1;
+                    const day = Number(dateMatch[3]);
+
+                    // 2. 判斷上午 / 下午
+                    const isPM = /下午|pm/i.test(s);
+                    const isAM = /上午|am/i.test(s);
+
+                    // 3. 提取時分秒
+                    const timeMatch = s.match(/(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+                    let hours = 0, minutes = 0, seconds = 0;
+                    if (timeMatch) {
+                        hours = Number(timeMatch[1]);
+                        minutes = Number(timeMatch[2]) || 0;
+                        seconds = Number(timeMatch[3]) || 0;
                         if (isPM && hours < 12) hours += 12;
                         if (isAM && hours === 12) hours = 0;
-                        return new Date(dArr[0], dArr[1] - 1, dArr[2], hours, tArr[1] || 0, tArr[2] || 0).getTime();
                     }
-                    let parsed = Date.parse(s);
-                    return isNaN(parsed) ? 0 : parsed;
+
+                    return new Date(year, month, day, hours, minutes, seconds).getTime();
                 } catch (e) {
                     return 0;
                 }
@@ -467,19 +477,19 @@
                 ? data.filter(row => filterCategory === '全部' || row[3] === filterCategory)
                     .map((row, originalIndex) => ({ row, originalIndex }))
                     .sort((a, b) => {
-                        // 1. 優先比對「日」：由大到小（較晚的日期排前面）
-                        const dayDiff = Number(b.row[2]) - Number(a.row[2]);
-                        if (dayDiff !== 0) return dayDiff;
-
-                        // 2. 同一天時：嘗試用時間戳記由新到舊排序
+                        // 1. 第一優先：比對時間戳記（毫秒數），愈新（時間愈靠近現在）排愈前面
                         const tA = parseTsToMillis(a.row[0]);
                         const tB = parseTsToMillis(b.row[0]);
                         if (tA > 0 && tB > 0 && tB !== tA) {
-                            return tB - tA; // 時間戳記愈晚（愈大）的排在愈前面
+                            return tB - tA; // 時間近到遠（新到舊）
                         }
 
-                        // 3. 保險排序：若時間戳記無法直接比對，依試算表登記順序（後登記的 originalIndex 較大）由新到舊排
-                        return b.originalIndex - a.originalIndex;
+                        // 2. 次要比對「日」：由大到小
+                        const dayDiff = Number(b.row[2]) - Number(a.row[2]);
+                        if (dayDiff !== 0) return dayDiff;
+
+                        // 3. 保險排序：若無時間戳記，直接依試算表真實由上到下的順序呈現
+                        return a.originalIndex - b.originalIndex;
                     })
                     .map(item => item.row)
                 : [];
