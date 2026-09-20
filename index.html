@@ -201,12 +201,15 @@
             const [isSavingEdit, setIsSavingEdit] = React.useState(false);
             const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
             const isModalPushedRef = React.useRef(false);
+            // 關鍵防禦：同步 Ref 鎖，防止手機端 0.1 秒內快速連按兩次送出
+            const isSavingRef = React.useRef(false);
 
             const categories = ["食物", "日用", "交通", "車車", "衣物", "寵物", "電器", "運動", "教育", "娛樂", "醫療", "禮物", "其他"];
             const payments = ["現金", "現金-自", "信用卡", "信用卡-自"];
 
             // 關閉編輯彈窗函式（若有推入上一頁歷史紀錄，同步 pop 出來）
             const handleCloseEdit = React.useCallback(() => {
+                isSavingRef.current = false;
                 if (isModalPushedRef.current) {
                     isModalPushedRef.current = false;
                     if (typeof google !== 'undefined' && google.script && google.script.history) {
@@ -219,6 +222,7 @@
                 setEditForm(null);
                 setShowDeleteConfirm(false);
                 setShowEditCalendar(false);
+                setIsSavingEdit(false);
             }, []);
 
             // 監聽手機系統返回事件：在編輯狀態下按上一頁，只關閉編輯狀態並停留在報表統計頁
@@ -226,10 +230,12 @@
                 const handlePopState = () => {
                     if (isModalPushedRef.current) {
                         isModalPushedRef.current = false;
+                        isSavingRef.current = false;
                         setEditingItem(null);
                         setEditForm(null);
                         setShowDeleteConfirm(false);
                         setShowEditCalendar(false);
+                        setIsSavingEdit(false);
                     }
                 };
                 window.addEventListener('popstate', handlePopState);
@@ -343,7 +349,9 @@
             };
 
             const handleSaveEdit = () => {
-                if (!editForm || !editForm.amount || !editForm.category || !editForm.user) return;
+                // 第 0 毫秒同步阻擋連擊：若已在儲存中，後續點擊一律無效
+                if (isSavingRef.current || !editForm || !editForm.amount || !editForm.category || !editForm.user) return;
+                isSavingRef.current = true;
                 setIsSavingEdit(true);
 
                 const updatedRow = [
@@ -381,16 +389,15 @@
                     body: JSON.stringify(payload),
                     keepalive: true
                 }).then(() => {
-                    setIsSavingEdit(false);
                     handleCloseEdit();
                 }).catch(() => {
-                    setIsSavingEdit(false);
                     handleCloseEdit();
                 });
             };
 
             const handleDeleteRecord = () => {
-                if (!editForm) return;
+                if (isSavingRef.current || !editForm) return;
+                isSavingRef.current = true;
                 setIsSavingEdit(true);
 
                 // 立即在前端樂觀移除該筆
@@ -411,10 +418,8 @@
                     body: JSON.stringify(payload),
                     keepalive: true
                 }).then(() => {
-                    setIsSavingEdit(false);
                     handleCloseEdit();
                 }).catch(() => {
-                    setIsSavingEdit(false);
                     handleCloseEdit();
                 });
             };
@@ -432,9 +437,51 @@
             const grandTotal = tingTotal + shanTotal;
             const uniqueCategories = data ? Array.from(new Set(data.map(row => row[3]))) : [];
 
+            // 輔助函式：將中文上下午時間戳記（如 2026/9/16 下午 6:46:42 或 2026/9/16 18:46:42）轉換為可比較的毫秒數
+            const parseTsToMillis = (tsStr) => {
+                if (!tsStr) return 0;
+                try {
+                    let s = String(tsStr).trim();
+                    let isPM = s.includes('下午');
+                    let isAM = s.includes('上午');
+                    s = s.replace(/上午|下午/g, '').trim();
+                    let parts = s.split(/\s+/);
+                    let datePart = parts[0] || "";
+                    let timePart = parts[1] || "00:00:00";
+                    let dArr = datePart.split(/[\/-]/).map(Number);
+                    let tArr = timePart.split(':').map(Number);
+                    if (dArr.length >= 3) {
+                        let hours = tArr[0] || 0;
+                        if (isPM && hours < 12) hours += 12;
+                        if (isAM && hours === 12) hours = 0;
+                        return new Date(dArr[0], dArr[1] - 1, dArr[2], hours, tArr[1] || 0, tArr[2] || 0).getTime();
+                    }
+                    let parsed = Date.parse(s);
+                    return isNaN(parsed) ? 0 : parsed;
+                } catch (e) {
+                    return 0;
+                }
+            };
+
             const filteredRows = data
                 ? data.filter(row => filterCategory === '全部' || row[3] === filterCategory)
-                    .sort((a, b) => Number(b[2]) - Number(a[2]))
+                    .map((row, originalIndex) => ({ row, originalIndex }))
+                    .sort((a, b) => {
+                        // 1. 優先比對「日」：由大到小（較晚的日期排前面）
+                        const dayDiff = Number(b.row[2]) - Number(a.row[2]);
+                        if (dayDiff !== 0) return dayDiff;
+
+                        // 2. 同一天時：嘗試用時間戳記由新到舊排序
+                        const tA = parseTsToMillis(a.row[0]);
+                        const tB = parseTsToMillis(b.row[0]);
+                        if (tA > 0 && tB > 0 && tB !== tA) {
+                            return tB - tA; // 時間戳記愈晚（愈大）的排在愈前面
+                        }
+
+                        // 3. 保險排序：若時間戳記無法直接比對，依試算表登記順序（後登記的 originalIndex 較大）由新到舊排
+                        return b.originalIndex - a.originalIndex;
+                    })
+                    .map(item => item.row)
                 : [];
             const filteredTotal = filteredRows.reduce((sum, row) => sum + Number(row[5]), 0);
 
