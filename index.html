@@ -2649,28 +2649,17 @@
                                 <Icon name="ChevronLeft" className="w-5 h-5" />
                             </button>
                             <div className="flex items-center gap-2">
-                                <h1 className="text-xl font-black text-gray-800 flex items-center gap-1.5">
-                                    <span className="text-rose-600"><Icon name="Heart" className="w-5 h-5 inline" /></span> 生理期日誌
-                                </h1>
-                                {apiToken && (
-                                    <button
-                                        type="button"
-                                        onClick={handlePureDownloadSync}
-                                        title={cloudStatus === 'loading' ? '正在從雲端下載最新紀錄...' : cloudStatus === 'saving' ? '正在同步至雲端...' : '點擊從雲端抓取最新紀錄'}
-                                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all active:scale-95 cursor-pointer ${
-                                            cloudStatus === 'loading' || cloudStatus === 'saving'
-                                                ? 'bg-amber-100 text-amber-700 animate-pulse'
-                                                : cloudStatus === 'synced'
-                                                    ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
-                                                    : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
-                                        }`}
-                                    >
-                                        <Icon name={cloudStatus === 'loading' || cloudStatus === 'saving' ? "Loader" : "Cloud"} className="w-3 h-3" />
-                                        <span>
-                                            {cloudStatus === 'loading' ? '載入中' : cloudStatus === 'saving' ? '同步中' : '雲端同步'}
-                                        </span>
-                                    </button>
-                                )}
+                                <h2 className="text-base font-black text-gray-800 tracking-wide">
+                                    {year} 年 {month + 1} 月
+                                </h2>
+                                <button
+                                    type="button"
+                                    onClick={selectToday}
+                                    className="text-[11px] bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold px-2 py-0.5 rounded-lg active:scale-95 transition-all cursor-pointer"
+                                    title="點選自動切換並選取今天"
+                                >
+                                    今天
+                                </button>
                             </div>
                             <button onClick={nextMonth} className="p-2 hover:bg-rose-50 text-rose-600 rounded-full active:scale-90 transition-all">
                                 <Icon name="ChevronRight" className="w-5 h-5" />
