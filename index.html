@@ -1567,7 +1567,9 @@
 
             // SWR 秒開：如果有本地快取，不阻擋操作；雲端背景進行靜默確認
             const [cloudStatus, setCloudStatus] = React.useState('idle');
-            const [lastCloudSyncTime, setLastCloudSyncTime] = React.useState(null);
+            const [lastCloudSyncTime, setLastCloudSyncTime] = React.useState(() => {
+                return safeStorage.getItem('period_last_sync_time') || null;
+            });
 
             const [backupNotice, setBackupNotice] = React.useState(null);
             const [showRestoreModal, setShowRestoreModal] = React.useState(false);
@@ -1672,6 +1674,7 @@
                         setCloudStatus('synced');
                         const now = new Intl.DateTimeFormat('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
                         setLastCloudSyncTime(now);
+                        safeStorage.setItem('period_last_sync_time', now);
                     })
                     .catch(() => {
                         setCloudStatus('error');
@@ -1733,14 +1736,20 @@
                                 if (cloudData.settings.periodDuration) setPeriodDuration(Number(cloudData.settings.periodDuration));
                                 if (typeof cloudData.settings.showFertileWindow === 'boolean') setShowFertileWindow(cloudData.settings.showFertileWindow);
                             }
-                            if (res.updatedAt) setLastCloudSyncTime(res.updatedAt);
+                            if (res.updatedAt) {
+                                setLastCloudSyncTime(res.updatedAt);
+                                safeStorage.setItem('period_last_sync_time', res.updatedAt);
+                            }
                         } else if (localTimestamp > cloudTimestamp) {
                             // 本機紀錄比較新：自動將本機最新紀錄推上雲端
                             if (saveToCloudRef.current) {
                                 saveToCloudRef.current(currentLocalP, currentLocalN);
                             }
                         } else {
-                            if (res.updatedAt) setLastCloudSyncTime(res.updatedAt);
+                            if (res.updatedAt) {
+                                setLastCloudSyncTime(res.updatedAt);
+                                safeStorage.setItem('period_last_sync_time', res.updatedAt);
+                            }
                         }
 
                         setCloudStatus('synced');
@@ -2350,7 +2359,7 @@
                                 {apiToken && (
                                     <button
                                         type="button"
-                                        onClick={fetchFromCloud}
+                                        onClick={handlePureDownloadSync}
                                         title={cloudStatus === 'loading' ? '正在讀取雲端...' : cloudStatus === 'saving' ? '正在同步至雲端...' : '點擊手動同步雲端'}
                                         className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all active:scale-95 cursor-pointer ${
                                             cloudStatus === 'loading' || cloudStatus === 'saving'
@@ -2368,7 +2377,9 @@
                                 )}
                             </div>
                             <p className="text-xs text-gray-400 font-medium mt-0.5">
-                                {cloudStatus === 'loading' ? '正在與雲端確認最新紀錄...' : (lastCloudSyncTime ? `最後更新：${lastCloudSyncTime}` : '預測經期與日常症狀追蹤')}
+                                {cloudStatus === 'loading'
+                                    ? '正在與雲端確認最新紀錄...'
+                                    : (lastCloudSyncTime ? `最後更新：${lastCloudSyncTime}` : '最後更新：尚未同步')}
                             </p>
                         </div>
                         <div className="flex items-center gap-2">
