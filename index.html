@@ -1670,7 +1670,7 @@
                 fetch(apiUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload), keepalive: true })
                     .then(() => {
                         setCloudStatus('synced');
-                        const now = new Intl.DateTimeFormat('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
+                        const now = new Intl.DateTimeFormat('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
                         setLastCloudSyncTime(now);
                     })
                     .catch(() => {
@@ -1684,8 +1684,8 @@
                 saveToCloudRef.current = saveToCloud;
             }, [saveToCloud]);
 
-            // --- 雲端試算表讀取 ---
-            const fetchFromCloud = React.useCallback(() => {
+            // --- 雲端試算表讀取與雙向智慧同步 ---
+            const fetchFromCloud = React.useCallback((forceOverwriteLocal = false) => {
                 if (!apiUrl || !apiToken) return;
                 setCloudStatus('loading');
 
@@ -1707,24 +1707,25 @@
                     isHandled = true;
                     clearTimeout(timeoutId);
 
+                    const localSavedP = safeStorage.getItem('period_ranges_v4');
+                    const currentLocalP = localSavedP ? JSON.parse(localSavedP) : [];
+                    const localSavedN = safeStorage.getItem('period_notes_v4');
+                    const currentLocalN = localSavedN ? JSON.parse(localSavedN) : {};
+                    const localTimestamp = Number(safeStorage.getItem('period_local_updated_at') || 0);
+
                     if (res && res.status === 'success' && res.data) {
                         const cloudData = res.data;
                         const cloudTimestamp = Number(cloudData.updatedAt || 0);
-                        const localTimestamp = Number(safeStorage.getItem('period_local_updated_at') || 0);
 
-                        const localSavedP = safeStorage.getItem('period_ranges_v4');
-                        const currentLocalP = localSavedP ? JSON.parse(localSavedP) : [];
-                        const localSavedN = safeStorage.getItem('period_notes_v4');
-                        const currentLocalN = localSavedN ? JSON.parse(localSavedN) : {};
-
-                        if (cloudTimestamp >= localTimestamp) {
+                        // 判斷邏輯：若要求強制覆蓋、或雲端時間確實比本機新，載入雲端資料
+                        if (forceOverwriteLocal || cloudTimestamp > localTimestamp || currentLocalP.length === 0) {
                             const cleanedCloudPeriods = cleanAndMergePeriods(cloudData.periods || []);
                             const cloudNotes = cloudData.notes || {};
                             setPeriods(cleanedCloudPeriods);
                             setNotes(cloudNotes);
                             safeStorage.setItem('period_ranges_v4', JSON.stringify(cleanedCloudPeriods));
                             safeStorage.setItem('period_notes_v4', JSON.stringify(cloudNotes));
-                            safeStorage.setItem('period_local_updated_at', String(cloudTimestamp));
+                            safeStorage.setItem('period_local_updated_at', String(cloudTimestamp || Date.now()));
 
                             if (cloudData.settings) {
                                 if (typeof cloudData.settings.useDefaultParams === 'boolean') setUseDefaultParams(cloudData.settings.useDefaultParams);
@@ -1732,19 +1733,19 @@
                                 if (cloudData.settings.periodDuration) setPeriodDuration(Number(cloudData.settings.periodDuration));
                                 if (typeof cloudData.settings.showFertileWindow === 'boolean') setShowFertileWindow(cloudData.settings.showFertileWindow);
                             }
-                        } else {
+                            if (res.updatedAt) setLastCloudSyncTime(res.updatedAt);
+                        } else if (localTimestamp > cloudTimestamp) {
+                            // 本機紀錄比較新：自動將本機最新紀錄推上雲端
                             if (saveToCloudRef.current) {
                                 saveToCloudRef.current(currentLocalP, currentLocalN);
                             }
+                        } else {
+                            if (res.updatedAt) setLastCloudSyncTime(res.updatedAt);
                         }
 
                         setCloudStatus('synced');
-                        if (res.updatedAt) setLastCloudSyncTime(res.updatedAt);
                     } else if (res && res.status === 'success' && !res.data) {
-                        const localSavedP = safeStorage.getItem('period_ranges_v4');
-                        const currentLocalP = localSavedP ? JSON.parse(localSavedP) : [];
-                        const localSavedN = safeStorage.getItem('period_notes_v4');
-                        const currentLocalN = localSavedN ? JSON.parse(localSavedN) : {};
+                        // 雲端是空的（例如初次使用或其他裝置未上傳）：若本機有資料，立刻上傳填滿雲端！
                         if (currentLocalP.length > 0 || Object.keys(currentLocalN).length > 0) {
                             if (saveToCloudRef.current) {
                                 saveToCloudRef.current(currentLocalP, currentLocalN);
@@ -1776,9 +1777,14 @@
                 document.body.appendChild(script);
             }, [apiUrl, apiToken, cleanAndMergePeriods]);
 
+            // 頂部同步按鈕：純下載抓取雲端最新資料（不主動推播本機資料覆蓋雲端）
+            const handlePureDownloadSync = () => {
+                fetchFromCloud(true);
+            };
+
             React.useEffect(() => {
                 if (apiToken) {
-                    fetchFromCloud();
+                    fetchFromCloud(false);
                 }
             }, [apiToken, fetchFromCloud]);
 
@@ -2438,12 +2444,44 @@
 
                             <div className="pt-2 border-t border-rose-100">
                                 <div className="text-xs font-bold text-gray-700 mb-1 flex items-center justify-between">
-                                    <span>資料備份與還原</span>
+                                    <span>雲端資料管理</span>
                                     <span className="text-[10px] text-gray-400 font-normal">本機共 {periods.length} 筆經期</span>
                                 </div>
-                                <p className="text-[10px] text-gray-400 mb-3 leading-relaxed">
-                                    資料儲存於此裝置瀏覽器。建議定期備份，換手機或更換瀏覽器時可輕鬆還原。
+                                <p className="text-[10px] text-gray-400 mb-2.5 leading-relaxed">
+                                    若要在兩台手機間切換，可點選「立即上傳」或在另一台手機點「自雲端下載」。
                                 </p>
+
+                                <div className="grid grid-cols-2 gap-2 mb-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            saveToCloud(periods, notes);
+                                            setBackupNotice({ type: 'success', text: '已將此裝置紀錄成功上傳至雲端！' });
+                                            setTimeout(() => setBackupNotice(null), 4000);
+                                        }}
+                                        className="p-2.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer shadow-sm shadow-rose-200"
+                                    >
+                                        <Icon name="Upload" className="w-3.5 h-3.5" />
+                                        <span>上傳此機至雲端</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            fetchFromCloud(true);
+                                            setBackupNotice({ type: 'success', text: '正在自雲端強制下載最新紀錄...' });
+                                            setTimeout(() => setBackupNotice(null), 4000);
+                                        }}
+                                        className="p-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer border border-rose-200"
+                                    >
+                                        <Icon name="RefreshCw" className="w-3.5 h-3.5 text-rose-600" />
+                                        <span>從雲端下載覆蓋</span>
+                                    </button>
+                                </div>
+
+                                <div className="text-xs font-bold text-gray-700 mb-1 flex items-center justify-between pt-2 border-t border-rose-50">
+                                    <span>單機離線檔案備份</span>
+                                </div>
 
                                 {backupNotice && (
                                     <div className={`mb-3 p-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 animate-in fade-in ${
@@ -2611,17 +2649,28 @@
                                 <Icon name="ChevronLeft" className="w-5 h-5" />
                             </button>
                             <div className="flex items-center gap-2">
-                                <h2 className="text-base font-black text-gray-800 tracking-wide">
-                                    {year} 年 {month + 1} 月
-                                </h2>
-                                <button
-                                    type="button"
-                                    onClick={selectToday}
-                                    className="text-[11px] bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold px-2 py-0.5 rounded-lg active:scale-95 transition-all cursor-pointer"
-                                    title="點選自動切換並選取今天"
-                                >
-                                    今天
-                                </button>
+                                <h1 className="text-xl font-black text-gray-800 flex items-center gap-1.5">
+                                    <span className="text-rose-600"><Icon name="Heart" className="w-5 h-5 inline" /></span> 生理期日誌
+                                </h1>
+                                {apiToken && (
+                                    <button
+                                        type="button"
+                                        onClick={handlePureDownloadSync}
+                                        title={cloudStatus === 'loading' ? '正在從雲端下載最新紀錄...' : cloudStatus === 'saving' ? '正在同步至雲端...' : '點擊從雲端抓取最新紀錄'}
+                                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all active:scale-95 cursor-pointer ${
+                                            cloudStatus === 'loading' || cloudStatus === 'saving'
+                                                ? 'bg-amber-100 text-amber-700 animate-pulse'
+                                                : cloudStatus === 'synced'
+                                                    ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
+                                                    : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
+                                        }`}
+                                    >
+                                        <Icon name={cloudStatus === 'loading' || cloudStatus === 'saving' ? "Loader" : "Cloud"} className="w-3 h-3" />
+                                        <span>
+                                            {cloudStatus === 'loading' ? '載入中' : cloudStatus === 'saving' ? '同步中' : '雲端同步'}
+                                        </span>
+                                    </button>
+                                )}
                             </div>
                             <button onClick={nextMonth} className="p-2 hover:bg-rose-50 text-rose-600 rounded-full active:scale-90 transition-all">
                                 <Icon name="ChevronRight" className="w-5 h-5" />
