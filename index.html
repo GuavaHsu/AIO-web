@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>生活好習慣 AIO</title>
     <link rel="manifest" href="./manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -18,7 +18,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
-        /* --- 動畫效果 --- */
+        /* --- STREAMING_CHUNK:Styling keyframe animations and global themes... --- */
         @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
         @keyframes bubble { 0% { transform: translateY(100vh) scale(0); opacity: 0; } 50% { opacity: 0.4; } 100% { transform: translateY(-10vh) scale(1.2); opacity: 0; } }
         @keyframes slideDown { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
@@ -26,6 +26,37 @@
         @keyframes slideInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
         .slide-left { animation: slideInLeft 0.22s ease-out forwards; }
         .slide-right { animation: slideInRight 0.22s ease-out forwards; }
+
+        /* --- iOS PWA Pull-to-Refresh Indicator --- */
+        #ios-ptr-indicator {
+            position: fixed;
+            top: env(safe-area-inset-top, 0px);
+            left: 0;
+            right: 0;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            pointer-events: none;
+            transform: translateY(-60px);
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #ios-ptr-content {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            padding: 8px 16px;
+            border-radius: 9999px;
+            font-size: 13px;
+            font-weight: bold;
+            color: #E91E63;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
 
         /* --- 全域主題變換與樣式 --- */
         html { height: 100%; }
@@ -51,9 +82,17 @@
 </head>
 
 <body>
+    <div id="ios-ptr-indicator">
+        <div id="ios-ptr-content">
+            <svg id="ios-ptr-spinner" class="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line></svg>
+            <span id="ios-ptr-text">下拉強制重新整理</span>
+        </div>
+    </div>
+
     <div id="root"></div>
 
     <script type="text/babel" data-presets="react">
+        /* --- STREAMING_CHUNK:Defining icon components and helpers... --- */
         const Icon = ({ name, className = "w-4 h-4" }) => {
             const icons = {
                 Calendar: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>),
@@ -72,7 +111,7 @@
                 Check: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="20 6 9 17 4 12"></polyline></svg>),
                 Heart: (<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" className={className}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>),
                 DropletFilled: (<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" className={className}><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path></svg>),
-                Settings: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>),
+                Settings: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>),
                 BarChart: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>),
                 Sparkles: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path></svg>),
                 X: (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>),
@@ -87,11 +126,10 @@
         };
 
         // ==========================================
-        //          記帳系統元件 (ExpenseApp)
+        //         記帳系統元件 (ExpenseApp)
         // ==========================================
 
         const ExpenseCalendar = ({ selectedDate, onSelect, onClose }) => {
-            // 透過字串直接拆解年月日，杜絕瀏覽器 new Date("YYYY-MM-DD") 的 UTC 時區跨月誤差
             const dateParts = String(selectedDate || "").split(/[-/]/);
             const initYear = dateParts.length >= 3 ? parseInt(dateParts[0], 10) : new Date().getFullYear();
             const initMonth = dateParts.length >= 3 ? parseInt(dateParts[1], 10) - 1 : new Date().getMonth();
@@ -172,7 +210,7 @@
                                             : isThisMonth(idx)
                                                 ? 'bg-pink-50 text-pink-700 border border-pink-100'
                                                 : 'text-gray-700 hover:bg-pink-50'
-                                            }`}
+                                        }`}
                                     >
                                         {mName}
                                     </button>
@@ -193,7 +231,6 @@
             const [loading, setLoading] = React.useState(false);
             const [filterCategory, setFilterCategory] = React.useState('全部');
 
-            // 點選明細修改與刪除狀態
             const [editingItem, setEditingItem] = React.useState(null);
             const [editForm, setEditForm] = React.useState(null);
             const [editDateStr, setEditDateStr] = React.useState(getTodayString());
@@ -201,13 +238,11 @@
             const [isSavingEdit, setIsSavingEdit] = React.useState(false);
             const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
             const isModalPushedRef = React.useRef(false);
-            // 關鍵防禦：同步 Ref 鎖，防止手機端 0.1 秒內快速連按兩次送出
             const isSavingRef = React.useRef(false);
 
             const categories = ["食物", "日用", "交通", "車車", "衣物", "寵物", "電器", "運動", "教育", "娛樂", "醫療", "禮物", "其他"];
             const payments = ["現金", "現金-自", "信用卡", "信用卡-自"];
 
-            // 關閉編輯彈窗函式（若有推入上一頁歷史紀錄，同步 pop 出來）
             const handleCloseEdit = React.useCallback(() => {
                 isSavingRef.current = false;
                 if (isModalPushedRef.current) {
@@ -225,7 +260,6 @@
                 setIsSavingEdit(false);
             }, []);
 
-            // 監聽手機系統返回事件：在編輯狀態下按上一頁，只關閉編輯狀態並停留在報表統計頁
             React.useEffect(() => {
                 const handlePopState = () => {
                     if (isModalPushedRef.current) {
@@ -273,14 +307,12 @@
                 setShowDeleteConfirm(false);
                 setShowEditCalendar(false);
 
-                // 智慧解析年月與日：支援 Date 物件、ISO 字串、"2026/09" 或從 timestamp 提取，確保絕不跑掉月份
                 let y = new Date().getFullYear();
                 let m = String(new Date().getMonth() + 1).padStart(2, '0');
                 let d = String(row[2] || "1").trim();
 
                 const rawYM = String(row[1] || "").trim();
                 if (rawYM.includes('T') || rawYM.includes('Z')) {
-                    // 若收到 ISO 字串，以本地時間取出年月
                     const dObj = new Date(rawYM);
                     if (!isNaN(dObj.getTime())) {
                         y = dObj.getFullYear();
@@ -294,7 +326,6 @@
                     }
                 }
 
-                // 保險防呆：若 row[1] 解析有誤，從 row[0] (如 2026/9/16 下午 6:46:42) 提取正確年月
                 if (!y || !m || isNaN(Number(y)) || isNaN(Number(m))) {
                     const tsStr = String(row[0] || "");
                     const match = tsStr.match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
@@ -317,7 +348,6 @@
                     amount: row[5],
                     payment: row[6],
                     user: row[7],
-                    // 保存原始完整資料，提供後端雙重定位保障
                     oldData: {
                         yearMonth: String(row[1]),
                         day: String(row[2]),
@@ -327,7 +357,6 @@
                     }
                 });
 
-                // 開啟編輯彈窗時推入一層瀏覽歷程，供手機返回按鈕攔截
                 if (!isModalPushedRef.current) {
                     isModalPushedRef.current = true;
                     if (typeof google !== 'undefined' && google.script && google.script.history) {
@@ -349,7 +378,6 @@
             };
 
             const handleSaveEdit = () => {
-                // 第 0 毫秒同步阻擋連擊：若已在儲存中，後續點擊一律無效
                 if (isSavingRef.current || !editForm || !editForm.amount || !editForm.category || !editForm.user) return;
                 isSavingRef.current = true;
                 setIsSavingEdit(true);
@@ -365,7 +393,6 @@
                     editForm.user
                 ];
 
-                // 立即在前端樂觀更新畫面
                 setData(prev => prev ? prev.map(r => String(r[0]) === String(editForm.originalTimestamp) ? updatedRow : r) : []);
 
                 const payload = {
@@ -400,7 +427,6 @@
                 isSavingRef.current = true;
                 setIsSavingEdit(true);
 
-                // 立即在前端樂觀移除該筆
                 setData(prev => prev ? prev.filter(r => String(r[0]) !== String(editForm.originalTimestamp)) : []);
 
                 const payload = {
@@ -437,12 +463,10 @@
             const grandTotal = tingTotal + shanTotal;
             const uniqueCategories = data ? Array.from(new Set(data.map(row => row[3]))) : [];
 
-            // 輔助函式：正則精準解析時間戳記（支援 中文上下午、AM/PM、24小時制），轉換為可比對的毫秒數
             const parseTsToMillis = (tsStr) => {
                 if (!tsStr) return 0;
                 try {
                     const s = String(tsStr).trim();
-                    // 1. 提取年月日
                     const dateMatch = s.match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
                     if (!dateMatch) {
                         const parsed = Date.parse(s);
@@ -452,11 +476,9 @@
                     const month = Number(dateMatch[2]) - 1;
                     const day = Number(dateMatch[3]);
 
-                    // 2. 判斷上午 / 下午
                     const isPM = /下午|pm/i.test(s);
                     const isAM = /上午|am/i.test(s);
 
-                    // 3. 提取時分秒
                     const timeMatch = s.match(/(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
                     let hours = 0, minutes = 0, seconds = 0;
                     if (timeMatch) {
@@ -477,18 +499,13 @@
                 ? data.filter(row => filterCategory === '全部' || row[3] === filterCategory)
                     .map((row, originalIndex) => ({ row, originalIndex }))
                     .sort((a, b) => {
-                        // 1. 第一優先：比對時間戳記（毫秒數），愈新（時間愈靠近現在）排愈前面
                         const tA = parseTsToMillis(a.row[0]);
                         const tB = parseTsToMillis(b.row[0]);
                         if (tA > 0 && tB > 0 && tB !== tA) {
-                            return tB - tA; // 時間近到遠（新到舊）
+                            return tB - tA;
                         }
-
-                        // 2. 次要比對「日」：由大到小
                         const dayDiff = Number(b.row[2]) - Number(a.row[2]);
                         if (dayDiff !== 0) return dayDiff;
-
-                        // 3. 保險排序：若無時間戳記，直接依試算表真實由上到下的順序呈現
                         return a.originalIndex - b.originalIndex;
                     })
                     .map(item => item.row)
@@ -601,7 +618,6 @@
                         )}
                     </div>
 
-                    {/* --- 點選修改 / 刪除彈跳卡片（同新增頁一致的視覺與日曆選單） --- */}
                     {editingItem && editForm && (
                         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-3 sm:p-4 animate-in fade-in overflow-y-auto">
                             <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-2xl max-w-md w-full my-auto space-y-4 border-2 border-pink-100 max-h-[92vh] overflow-y-auto relative">
@@ -620,7 +636,6 @@
                                 </div>
 
                                 <div className="space-y-4">
-                                    {/* 1. 交易日期（日曆按鈕） */}
                                     <div className="relative">
                                         <label className="block font-bold mb-2 flex items-center text-gray-700 text-xs sm:text-sm">
                                             <Icon name="Calendar" className="w-4 h-4 mr-2 text-pink-500" /> 交易日期 <span className="text-pink-500 ml-1 font-black">*</span>
@@ -642,7 +657,6 @@
                                         )}
                                     </div>
 
-                                    {/* 2. 是誰花的 */}
                                     <div>
                                         <label className="block font-bold mb-2 flex items-center text-gray-700 text-xs sm:text-sm">
                                             <Icon name="User" className="w-4 h-4 mr-2 text-pink-500" /> 是誰花的？ <span className="text-pink-500 ml-1 font-black">*</span>
@@ -665,7 +679,6 @@
                                         </div>
                                     </div>
 
-                                    {/* 3. 項目類別 */}
                                     <div>
                                         <label className="block font-bold mb-2 flex items-center text-gray-700 text-xs sm:text-sm">
                                             <Icon name="Tag" className="w-4 h-4 mr-2 text-pink-500" /> 項目 <span className="text-pink-500 ml-1 font-black">*</span>
@@ -688,7 +701,6 @@
                                         </div>
                                     </div>
 
-                                    {/* 4. 金額 */}
                                     <div>
                                         <label className="block font-bold mb-1 flex items-center text-gray-700 text-xs sm:text-sm">
                                             <Icon name="DollarSign" className="w-4 h-4 mr-2 text-pink-500" /> 金額 <span className="text-pink-500 ml-1 font-black">*</span>
@@ -702,7 +714,6 @@
                                         />
                                     </div>
 
-                                    {/* 5. 內容備註 */}
                                     <div>
                                         <label className="block font-bold mb-1 flex items-center text-gray-700 text-xs sm:text-sm">
                                             <Icon name="PenTool" className="w-4 h-4 mr-2 text-pink-500" /> 內容 <span className="text-pink-500 ml-1 font-black">*</span>
@@ -716,7 +727,6 @@
                                         />
                                     </div>
 
-                                    {/* 6. 付款方式 */}
                                     <div>
                                         <label className="block font-bold mb-2 flex items-center text-gray-700 text-xs sm:text-sm">
                                             <Icon name="CreditCard" className="w-4 h-4 mr-2 text-pink-500" /> 付款方式 <span className="text-pink-500 ml-1 font-black">*</span>
@@ -740,7 +750,6 @@
                                     </div>
                                 </div>
 
-                                {/* 底部操作按鈕 */}
                                 {showDeleteConfirm ? (
                                     <div className="pt-2 border-t border-red-100 bg-red-50/70 p-3.5 rounded-2xl space-y-2 text-center animate-in fade-in">
                                         <div className="text-xs font-bold text-red-600">確定要刪除這筆消費紀錄嗎？</div>
@@ -994,10 +1003,6 @@
             );
         };
 
-        // ==========================================
-        //          微醺系統元件 (WineApp)
-        // ==========================================
-
         const WineImage = ({ name, emoji }) => {
             const [hasError, setHasError] = React.useState(false);
             return hasError ? (
@@ -1094,7 +1099,7 @@
                                             : isThisMonth(idx)
                                                 ? 'bg-amber-100 text-amber-900 border border-amber-900/20'
                                                 : 'text-amber-900 hover:bg-amber-50'
-                                            }`}
+                                        }`}
                                     >
                                         {mName}
                                     </button>
@@ -1482,10 +1487,6 @@
             );
         };
 
-        // ==========================================
-        //          生理期日誌元件 (PeriodApp)
-        // ==========================================
-
         const safeStorage = {
             getItem: (key) => {
                 try {
@@ -1565,7 +1566,6 @@
             const [mergePrompt, setMergePrompt] = React.useState(null);
             const [nonConsecutiveNotice, setNonConsecutiveNotice] = React.useState(false);
 
-            // SWR 秒開：如果有本地快取，不阻擋操作；雲端背景進行靜默確認
             const [cloudStatus, setCloudStatus] = React.useState('idle');
             const [lastCloudSyncTime, setLastCloudSyncTime] = React.useState(() => {
                 return safeStorage.getItem('period_last_sync_time') || null;
@@ -1604,7 +1604,6 @@
                 return saved ? JSON.parse(saved) : {};
             });
 
-            // 本地快取自動備存
             React.useEffect(() => { safeStorage.setItem('period_use_default_v4', JSON.stringify(useDefaultParams)); }, [useDefaultParams]);
             React.useEffect(() => { safeStorage.setItem('period_cycle_len_v4', String(cycleLength)); }, [cycleLength]);
             React.useEffect(() => { safeStorage.setItem('period_duration_v4', String(periodDuration)); }, [periodDuration]);
@@ -1612,7 +1611,6 @@
             React.useEffect(() => { safeStorage.setItem('period_ranges_v4', JSON.stringify(periods)); }, [periods]);
             React.useEffect(() => { safeStorage.setItem('period_notes_v4', JSON.stringify(notes)); }, [notes]);
 
-            // --- 經期區間清理與自動鄰接合併演算法 ---
             const cleanAndMergePeriods = React.useCallback((list) => {
                 if (!list || list.length === 0) return [];
                 const sorted = [...list]
@@ -1643,7 +1641,6 @@
                 return merged;
             }, []);
 
-            // --- 雲端試算表儲存 (POST) ---
             const saveToCloud = React.useCallback((updatedPeriods, updatedNotes, updatedSettings) => {
                 if (!apiUrl || !apiToken) return;
                 setCloudStatus('saving');
@@ -1681,13 +1678,11 @@
                     });
             }, [apiUrl, apiToken, periods, notes, useDefaultParams, cycleLength, periodDuration, showFertileWindow]);
 
-            // 用 Ref 保持 saveToCloud 的引用，避免 fetchFromCloud 造成循環依賴
             const saveToCloudRef = React.useRef(saveToCloud);
             React.useEffect(() => {
                 saveToCloudRef.current = saveToCloud;
             }, [saveToCloud]);
 
-            // --- 雲端試算表讀取與雙向智慧同步 ---
             const fetchFromCloud = React.useCallback((forceOverwriteLocal = false) => {
                 if (!apiUrl || !apiToken) return;
                 setCloudStatus('loading');
@@ -1720,7 +1715,6 @@
                         const cloudData = res.data;
                         const cloudTimestamp = Number(cloudData.updatedAt || 0);
 
-                        // 判斷邏輯：若要求強制覆蓋、或雲端時間確實比本機新，載入雲端資料
                         if (forceOverwriteLocal || cloudTimestamp > localTimestamp || currentLocalP.length === 0) {
                             const cleanedCloudPeriods = cleanAndMergePeriods(cloudData.periods || []);
                             const cloudNotes = cloudData.notes || {};
@@ -1741,7 +1735,6 @@
                                 safeStorage.setItem('period_last_sync_time', res.updatedAt);
                             }
                         } else if (localTimestamp > cloudTimestamp) {
-                            // 本機紀錄比較新：自動將本機最新紀錄推上雲端
                             if (saveToCloudRef.current) {
                                 saveToCloudRef.current(currentLocalP, currentLocalN);
                             }
@@ -1754,7 +1747,6 @@
 
                         setCloudStatus('synced');
                     } else if (res && res.status === 'success' && !res.data) {
-                        // 雲端是空的（例如初次使用或其他裝置未上傳）：若本機有資料，立刻上傳填滿雲端！
                         if (currentLocalP.length > 0 || Object.keys(currentLocalN).length > 0) {
                             if (saveToCloudRef.current) {
                                 saveToCloudRef.current(currentLocalP, currentLocalN);
@@ -1786,7 +1778,6 @@
                 document.body.appendChild(script);
             }, [apiUrl, apiToken, cleanAndMergePeriods]);
 
-            // 頂部同步按鈕：純下載抓取雲端最新資料（不主動推播本機資料覆蓋雲端）
             const handlePureDownloadSync = () => {
                 fetchFromCloud(true);
             };
@@ -2304,7 +2295,6 @@
                 }
             };
 
-            // 構建月曆格子：月初補上前月至週日，月底補上下月至週六
             const calendarCells = [];
             const prevMonthLastDate = new Date(year, month, 0).getDate();
             for (let i = firstDayOfMonth - 1; i >= 0; i--) {
@@ -2626,7 +2616,6 @@
                         </div>
                     )}
 
-                    {/* 未綁定金鑰提示列 */}
                     {!apiToken && (
                         <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-2xl text-amber-900 text-xs font-bold flex items-center justify-between animate-in fade-in">
                             <div className="flex items-center gap-1.5">
@@ -2649,7 +2638,6 @@
                         </div>
                     )}
 
-                    {/* 月曆卡片區塊 */}
                     <div
                         className="bg-white rounded-3xl p-5 shadow-sm mb-4 relative"
                         onTouchStart={handleTouchStart}
@@ -2782,7 +2770,6 @@
                         </div>
                     </div>
 
-                    {/* 操作與記事區塊 */}
                     <div className="bg-white rounded-3xl p-5 shadow-sm space-y-4">
                         {nonConsecutiveNotice && (
                             <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
@@ -2998,10 +2985,6 @@
             );
         };
 
-        // ==========================================
-        //          最外層主控元件 (App)
-        // ==========================================
-
         const App = () => {
             const getInitialTab = () => {
                 const tab = new URLSearchParams(window.location.search).get('tab');
@@ -3018,7 +3001,6 @@
             const expenseApiUrl = 'https://script.google.com/macros/s/AKfycbxyB9Z2sJHxJ3533aqEYnCxMecQShD5nUBBsfYsJpgeM2aPOXTMKU44gwM8IS7M9eYU/exec';
             const wineApiUrl = 'https://script.google.com/macros/s/AKfycbylZOr-mY4m822xXNBZgp7uAaeJ_6eT-ZxwZYc9YGNdweiyz5x7l0U8ekSaY9_9MVrP/exec';
             
-            // 雙向相容驗證：優先驗證含有「生理期與微醺」的伺服器，若未過再驗證記帳伺服器（嚴格區分大小寫）
             const verifyToken = React.useCallback((idToVerify, isSilent = false) => {
                 if (!idToVerify) return;
                 const cleanedId = idToVerify.toString().replace(/["']/g, "").trim();
@@ -3050,7 +3032,6 @@
                         return;
                     }
 
-                    // 若微醺伺服器未通過，自動備援查詢記帳伺服器
                     if (!triedExpense) {
                         triedExpense = true;
                         cleanupScripts();
@@ -3119,7 +3100,6 @@
                 const cleanedId = id.replace(/["']/g, "").trim();
                 const cachedVerified = safeStorage.getItem('api_token_verified');
 
-                // 快取驗證判定：若先前已驗證通過此金鑰，0.01 秒秒開進系統！
                 if (cachedVerified && cachedVerified === cleanedId) {
                     setApiToken(cleanedId);
                     setAuthStatus('authorized');
@@ -3308,7 +3288,7 @@
     </script>
 
     <script>
-        // 安全清理 Service Worker 快取，防範 iframe 容器中 invalid state 錯誤
+        // --- STREAMING_CHUNK:Initializing iOS PWA Pull-to-Refresh & cache clearance logic... ---
         try {
             if (typeof window !== 'undefined' && 'serviceWorker' in navigator && window.isSecureContext) {
                 window.addEventListener('load', function() {
@@ -3332,6 +3312,88 @@
                 }).catch(() => {});
             }
         } catch (e) {}
+
+        // iOS PWA 專屬下拉強制重新整理檢測與互動邏輯
+        (function() {
+            const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent.toLowerCase());
+            const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+
+            // 僅在 iOS 獨立 PWA 環境啟動
+            if (!isIOS || !isStandalone) return;
+
+            let touchStartY = 0;
+            let isPulling = false;
+            let isRefreshing = false;
+            const threshold = 85; // 下拉觸發閾值 (px)
+            const indicator = document.getElementById('ios-ptr-indicator');
+            const textEl = document.getElementById('ios-ptr-text');
+            const spinnerEl = document.getElementById('ios-ptr-spinner');
+
+            window.addEventListener('touchstart', (e) => {
+                if (window.scrollY <= 2 && !isRefreshing) {
+                    touchStartY = e.touches[0].clientY;
+                    isPulling = true;
+                } else {
+                    isPulling = false;
+                }
+            }, { passive: true });
+
+            window.addEventListener('touchmove', (e) => {
+                if (!isPulling || isRefreshing) return;
+                const currentY = e.touches[0].clientY;
+                const deltaY = currentY - touchStartY;
+
+                if (deltaY > 0 && window.scrollY <= 2) {
+                    // 緩衝拉動距離
+                    const pullDistance = Math.min(deltaY * 0.45, 90);
+                    if (indicator) {
+                        indicator.style.transform = `translateY(${pullDistance - 60}px)`;
+                    }
+                    if (textEl) {
+                        textEl.textContent = pullDistance >= threshold ? '放開立即重新整理' : '下拉強制重新整理';
+                    }
+                } else {
+                    isPulling = false;
+                    if (indicator) indicator.style.transform = `translateY(-60px)`;
+                }
+            }, { passive: true });
+
+            window.addEventListener('touchend', (e) => {
+                if (!isPulling || isRefreshing) return;
+                isPulling = false;
+
+                const deltaY = e.changedTouches[0].clientY - touchStartY;
+                const pullDistance = Math.min(deltaY * 0.45, 90);
+
+                if (pullDistance >= threshold) {
+                    isRefreshing = true;
+                    if (indicator) indicator.style.transform = `translateY(15px)`;
+                    if (textEl) textEl.textContent = '正在清空快取重整...';
+                    if (spinnerEl) spinnerEl.style.display = 'block';
+
+                    // 強制清除本地 Service Worker 與 Cache 後重新載入
+                    setTimeout(async () => {
+                        try {
+                            if ('caches' in window) {
+                                const keys = await caches.keys();
+                                await Promise.all(keys.map(k => caches.delete(k)));
+                            }
+                            if ('serviceWorker' in navigator) {
+                                const regs = await navigator.serviceWorker.getRegistrations();
+                                for (const reg of regs) {
+                                    await reg.unregister();
+                                }
+                            }
+                        } catch (err) {}
+                        
+                        // 強制略過快取重載
+                        window.location.reload(true);
+                    }, 400);
+                } else {
+                    if (indicator) indicator.style.transform = `translateY(-60px)`;
+                }
+            }, { passive: true });
+        })();
     </script>
 </body>
 
