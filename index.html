@@ -94,7 +94,7 @@
     <!-- 頁面最底部版本更新時間標籤（滑到底部才顯示，淺灰色且不遮擋任何操作內容） -->
     <div style="max-width: 28rem; margin: -50px auto 0 auto; display: flex; justify-content: flex-end; padding: 0 16px max(20px, env(safe-area-inset-bottom, 20px)) 16px; pointer-events: none; position: relative; z-index: 10;">
         <div style="background: rgba(220, 220, 220, 0.72); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #64748b; font-size: 11px; font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; padding: 3px 10px; border-radius: 9999px; border: 1px solid rgba(148, 163, 184, 0.3); box-shadow: 0 2px 6px rgba(0,0,0,0.03); letter-spacing: 0.04em;">
-            v2026.09.23-2
+            v2026.09.23-3
         </div>
     </div>
 
@@ -310,10 +310,13 @@
             };
 
             const handleOpenEdit = (row) => {
+                isSavingRef.current = false;
+                setIsSavingEdit(false);
                 setEditingItem(row);
                 setShowDeleteConfirm(false);
                 setShowEditCalendar(false);
 
+                // 智慧解析年月日與日，避免 ISO 字串或 UTC 跨月
                 let y = new Date().getFullYear();
                 let m = String(new Date().getMonth() + 1).padStart(2, '0');
                 let d = String(row[2] || "1").trim();
@@ -346,18 +349,20 @@
                 const fullStr = `${y}-${m}-${String(Number(d)).padStart(2, '0')}`;
                 setEditDateStr(fullStr);
 
+                const cleanYM = `${y}/${m}`;
+
                 setEditForm({
                     originalTimestamp: String(row[0]),
-                    yearMonth: `${y}/${m}`,
+                    yearMonth: cleanYM,
                     day: String(Number(d)),
                     category: row[3],
-                    content: row[4],
+                    content: row[4] || "",
                     amount: row[5],
                     payment: row[6],
                     user: row[7],
                     oldData: {
-                        yearMonth: String(row[1]),
-                        day: String(row[2]),
+                        yearMonth: cleanYM,
+                        day: String(Number(d)),
                         category: row[3],
                         amount: row[5],
                         user: row[7]
@@ -406,7 +411,7 @@
                     action: 'update',
                     originalTimestamp: editForm.originalTimestamp,
                     yearMonth: editForm.yearMonth,
-                    oldYearMonth: editForm.oldData?.yearMonth,
+                    oldYearMonth: editForm.oldData?.yearMonth || editForm.yearMonth,
                     day: editForm.day,
                     category: editForm.category,
                     content: editForm.content,
@@ -414,7 +419,8 @@
                     payment: editForm.payment,
                     user: editForm.user,
                     oldData: editForm.oldData,
-                    api_token: apiToken
+                    api_token: apiToken,
+                    id: apiToken
                 };
 
                 fetch(apiUrl, {
@@ -440,9 +446,10 @@
                     action: 'delete',
                     originalTimestamp: editForm.originalTimestamp,
                     yearMonth: editForm.yearMonth,
-                    oldYearMonth: editForm.oldData?.yearMonth,
+                    oldYearMonth: editForm.oldData?.yearMonth || editForm.yearMonth,
                     oldData: editForm.oldData,
-                    api_token: apiToken
+                    api_token: apiToken,
+                    id: apiToken
                 };
 
                 fetch(apiUrl, {
