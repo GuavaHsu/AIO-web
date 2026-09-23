@@ -92,10 +92,10 @@
 
     <div id="root"></div>
 
-    <!-- 頁面最底部版本更新時間標籤（滑到底部才顯示） -->
-    <div style="max-width: 28rem; margin: -50px auto 0 auto; display: flex; justify-content: flex-end; padding: 0 16px max(20px, env(safe-area-inset-bottom, 20px)) 16px; pointer-events: none; position: relative; z-index: 10;">
-        <div style="background: rgba(220, 220, 220, 0.72); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #64748b; font-size: 11px; font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; padding: 3px 10px; border-radius: 9999px; border: 1px solid rgba(148, 163, 184, 0.3); box-shadow: 0 2px 6px rgba(0,0,0,0.03); letter-spacing: 0.04em;">
-            v2026.09.23-3
+    <!-- 頁面最底部版本更新時間標籤（自然流向置底，絕不遮擋卡片） -->
+    <div style="max-width: 28rem; margin: 2rem auto 0 auto; display: flex; justify-content: flex-end; padding: 0 16px max(24px, env(safe-area-inset-bottom, 24px)) 16px; pointer-events: none; position: relative; z-index: 10;">
+        <div style="background: rgba(250, 250, 250, 0.72); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #64748b; font-size: 11px; font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; padding: 3px 10px; border-radius: 9999px; border: 1px solid rgba(148, 163, 184, 0.3); box-shadow: 0 2px 6px rgba(0,0,0,0.03); letter-spacing: 0.04em;">
+            v2026.09.23-4
         </div>
     </div>
 
@@ -428,12 +428,11 @@
                     id: apiToken
                 };
 
-                const updateUrl = `${apiUrl}?action=update&id=${encodeURIComponent(apiToken || '')}&api_token=${encodeURIComponent(apiToken || '')}&_t=${Date.now()}`;
+                const updateUrl = `${apiUrl}?action=update&id=${encodeURIComponent(apiToken || '')}&api_token=${encodeURIComponent(apiToken || '')}`;
 
                 fetch(updateUrl, {
                     method: 'POST',
                     mode: 'no-cors',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify(payload),
                     keepalive: true
                 }).then(() => {
@@ -460,12 +459,11 @@
                     id: apiToken
                 };
 
-                const deleteUrl = `${apiUrl}?action=delete&id=${encodeURIComponent(apiToken || '')}&api_token=${encodeURIComponent(apiToken || '')}&_t=${Date.now()}`;
+                const deleteUrl = `${apiUrl}?action=delete&id=${encodeURIComponent(apiToken || '')}&api_token=${encodeURIComponent(apiToken || '')}`;
 
                 fetch(deleteUrl, {
                     method: 'POST',
                     mode: 'no-cors',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify(payload),
                     keepalive: true
                 }).then(() => {
@@ -524,14 +522,19 @@
                 ? data.filter(row => filterCategory === '全部' || row[3] === filterCategory)
                     .map((row, originalIndex) => ({ row, originalIndex }))
                     .sort((a, b) => {
+                        // 1. 第一優先：依消費「日」由新到舊排列 (由大到小，如 23日 -> 22日)
+                        const dayDiff = Number(b.row[2]) - Number(a.row[2]);
+                        if (dayDiff !== 0) return dayDiff;
+
+                        // 2. 第二優先 (同一天內)：依登記時間戳記由新到舊排序
                         const tA = parseTsToMillis(a.row[0]);
                         const tB = parseTsToMillis(b.row[0]);
                         if (tA > 0 && tB > 0 && tB !== tA) {
                             return tB - tA;
                         }
-                        const dayDiff = Number(b.row[2]) - Number(a.row[2]);
-                        if (dayDiff !== 0) return dayDiff;
-                        return a.originalIndex - b.originalIndex;
+
+                        // 3. 保險排序：若無時間，後登記的排前面
+                        return b.originalIndex - a.originalIndex;
                     })
                     .map(item => item.row)
                 : [];
