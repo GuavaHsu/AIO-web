@@ -92,10 +92,10 @@
 
     <div id="root"></div>
 
-    <!-- 頁面最底部版本更新時間標籤（自然流向置底，絕不遮擋卡片） -->
-    <div style="max-width: 28rem; margin: 2rem auto 0 auto; display: flex; justify-content: flex-end; padding: 0 16px max(24px, env(safe-area-inset-bottom, 24px)) 16px; pointer-events: none; position: relative; z-index: 10;">
+    <!-- 頁面最底部版本更新時間標籤（自然流向置底，舒適勻稱的間距） -->
+    <div style="max-width: 28rem; margin: 0.75rem auto 0 auto; display: flex; justify-content: flex-end; padding: 0 16px max(16px, env(safe-area-inset-bottom, 16px)) 16px; pointer-events: none; position: relative; z-index: 10;">
         <div style="background: rgba(250, 250, 250, 0.72); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #64748b; font-size: 11px; font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; padding: 3px 10px; border-radius: 9999px; border: 1px solid rgba(148, 163, 184, 0.3); box-shadow: 0 2px 6px rgba(0,0,0,0.03); letter-spacing: 0.04em;">
-            v2026.09.23-4
+            v2026.09.23-４
         </div>
     </div>
 
@@ -946,7 +946,7 @@
             }
 
             return (
-                <div className="min-h-screen py-6 px-4 text-gray-800 pb-32">
+                <div className="min-h-screen py-6 px-4 text-gray-800 pb-4">
                     <div className="max-w-md mx-auto space-y-4">
                         <div className="bg-white rounded-2xl shadow-sm border-t-8 border-pink-500 p-6 relative overflow-hidden text-center">
                             <h1 className="text-2xl font-bold text-gray-800 tracking-tight">養成記帳好習慣!!</h1>
@@ -1210,7 +1210,6 @@
                 ? filteredDataRows.filter(row => filterCategory === '全部' || row[3] === filterCategory)
                     .sort((a, b) => Number(b[2]) - Number(a[2]))
                 : [];
-            const filteredTotal = filteredRows.reduce((sum, row) => sum + (Number(row[7]) || 0), 0);
 
             return (
                 <div className="min-h-screen py-6 px-4 font-black">
@@ -1284,9 +1283,8 @@
                                         </div>
                                     </div>
 
-                                    <div className="text-[10px] text-amber-900/50 font-black mb-3 flex justify-between px-1">
+                                    <div className="text-[10px] text-amber-900/50 font-black mb-3 px-1">
                                         <span>顯示篩選後資料：{filteredRows.length} 筆</span>
-                                        <span className="text-amber-950 font-black">合計容量：{filteredTotal} ml</span>
                                     </div>
 
                                     <div className="overflow-x-auto border border-amber-900/10 rounded-xl">
@@ -1451,7 +1449,7 @@
             }
 
             return (
-                <div className="relative min-h-screen z-10 pb-32 font-black">
+                <div className="relative min-h-screen z-10 pb-4 font-black">
                     <BubbleBg />
                     <div className="max-w-md mx-auto px-5 py-10 relative z-20 font-black">
                         <div className="text-center mb-10 animate-[float_5s_ease-in-out_infinite] relative">
@@ -2376,7 +2374,7 @@
             };
 
             return (
-                <div className="max-w-md mx-auto min-h-screen pb-28 px-4 pt-4 text-gray-800">
+                <div className="max-w-md mx-auto min-h-screen pb-4 px-4 pt-4 text-gray-800">
                     <div className="bg-white rounded-3xl p-5 shadow-sm border-t-8 border-rose-500 mb-4 flex justify-between items-center">
                         <div>
                             <div className="flex items-center gap-2">
