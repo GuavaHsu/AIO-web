@@ -95,7 +95,7 @@
     <!-- 頁面最底部版本更新時間標籤（自然流向置底，舒適勻稱的間距） -->
     <div style="max-width: 28rem; margin: 0.75rem auto 0 auto; display: flex; justify-content: flex-end; padding: 0 16px max(16px, env(safe-area-inset-bottom, 16px)) 16px; pointer-events: none; position: relative; z-index: 10;">
         <div style="background: rgba(250, 250, 250, 0.72); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #64748b; font-size: 11px; font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; padding: 3px 10px; border-radius: 9999px; border: 1px solid rgba(148, 163, 184, 0.3); box-shadow: 0 2px 6px rgba(0,0,0,0.03); letter-spacing: 0.04em;">
-            v2026.09.23-４
+            v2026.10.06-1
         </div>
     </div>
 
@@ -1857,7 +1857,14 @@
 
             const calculations = React.useMemo(() => {
                 if (periods.length === 0) {
-                    return { predictedPeriod: [], ovulationPeriod: [], ovulationDay: null, nextStart: null, mode: "none" };
+                    return { 
+                        predictedPeriod: [], 
+                        ovulationPeriod: [], 
+                        ovulationDays: [], 
+                        ovulationDay: null, 
+                        nextStart: null, 
+                        mode: "none" 
+                    };
                 }
 
                 const sorted = [...periods].sort((a, b) => a.start.localeCompare(b.start));
@@ -1873,23 +1880,62 @@
                         effectiveDuration = stats.avgDuration;
                         mode = "history";
                     } else {
-                        return { predictedPeriod: [], ovulationPeriod: [], ovulationDay: null, nextStart: null, mode: "need_more_data" };
+                        return { 
+                            predictedPeriod: [], 
+                            ovulationPeriod: [], 
+                            ovulationDays: [], 
+                            ovulationDay: null, 
+                            nextStart: null, 
+                            mode: "need_more_data" 
+                        };
                     }
                 }
 
-                const nextStart = addDays(lastPeriod.start, effectiveCycle);
-                const predictedPeriod = [];
-                for (let i = 0; i < effectiveDuration; i++) {
-                    predictedPeriod.push(addDays(nextStart, i));
+                const todayStr = toDateStr(new Date());
+                const predictedPeriodSet = new Set();
+                const ovulationPeriodSet = new Set();
+                const ovulationDaysSet = new Set();
+
+                // 預測推算未來 24 個週期（約 2 年），讓之後每個月切換日曆時都能清楚查看預測
+                const FUTURE_CYCLES_COUNT = 24;
+                let nextUpcomingStart = null;
+                let nextUpcomingOvulation = null;
+
+                for (let c = 1; c <= FUTURE_CYCLES_COUNT; c++) {
+                    const cycleStart = addDays(lastPeriod.start, effectiveCycle * c);
+
+                    // 記錄該週期的預測經期天數
+                    for (let i = 0; i < effectiveDuration; i++) {
+                        predictedPeriodSet.add(addDays(cycleStart, i));
+                    }
+
+                    // 記錄該週期的預測排卵日與易孕期（排卵日為下次月經前 14 天）
+                    const ovDay = addDays(cycleStart, -14);
+                    ovulationDaysSet.add(ovDay);
+                    for (let i = -2; i <= 1; i++) {
+                        ovulationPeriodSet.add(addDays(ovDay, i));
+                    }
+
+                    // 鎖定「最靠近未來的下一次」經期開始日與排卵日，供統計卡片顯示
+                    if (!nextUpcomingStart && cycleStart >= todayStr) {
+                        nextUpcomingStart = cycleStart;
+                        nextUpcomingOvulation = ovDay;
+                    }
                 }
 
-                const ovulationDay = addDays(nextStart, -14);
-                const ovulationPeriod = [];
-                for (let i = -2; i <= 1; i++) {
-                    ovulationPeriod.push(addDays(ovulationDay, i));
-                }
+                // 保底防呆：若最後一筆記錄較久遠，預設以第一個週期顯示
+                const initialFirstStart = addDays(lastPeriod.start, effectiveCycle);
+                const nextStart = nextUpcomingStart || initialFirstStart;
+                const ovulationDay = nextUpcomingOvulation || addDays(initialFirstStart, -14);
 
-                return { predictedPeriod, ovulationPeriod, ovulationDay, nextStart, mode };
+                return { 
+                    predictedPeriod: Array.from(predictedPeriodSet), 
+                    ovulationPeriod: Array.from(ovulationPeriodSet), 
+                    ovulationDays: Array.from(ovulationDaysSet),
+                    ovulationDay, 
+                    nextStart, 
+                    mode 
+                };
             }, [periods, cycleLength, periodDuration, useDefaultParams, stats]);
 
             const handleDateClick = (dateStr) => {
@@ -2367,9 +2413,9 @@
                 const isPeriod = !!activePeriod;
                 const isPeriodStart = activePeriod?.start === dateStr;
                 const isPeriodEnd = activePeriod?.end === dateStr;
-                const isPredicted = calculations.predictedPeriod.includes(dateStr);
-                const isOvulationDay = calculations.ovulationDay === dateStr;
-                const isOvulationWindow = showFertileWindow && calculations.ovulationPeriod.includes(dateStr);
+                const isPredicted = !isPeriod && calculations.predictedPeriod.includes(dateStr);
+                const isOvulationDay = !isPeriod && (calculations.ovulationDays ? calculations.ovulationDays.includes(dateStr) : calculations.ovulationDay === dateStr);
+                const isOvulationWindow = !isPeriod && showFertileWindow && calculations.ovulationPeriod.includes(dateStr);
                 return { isPeriod, isPeriodStart, isPeriodEnd, isPredicted, isOvulationDay, isOvulationWindow, activePeriod };
             };
 
